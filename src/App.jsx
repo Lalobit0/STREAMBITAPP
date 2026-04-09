@@ -448,7 +448,7 @@ const FILTROS = [
 ]
 
 function App({ sesion, onLogout }) {
-  const [data, setData] = useState([]) // [{cliente, servicios}]
+  const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [buscar, setBuscar] = useState('')
@@ -457,10 +457,11 @@ function App({ sesion, onLogout }) {
   const [orden, setOrden] = useState('fecha')
   const [verRes, setVerRes] = useState(false)
   const [ultimaAct, setUltimaAct] = useState(null)
-  const [modalForm, setModalForm] = useState(null) // null | {clienteId, clienteNombre}
+  const [modalForm, setModalForm] = useState(null)
   const [modalRenovar, setModalRenovar] = useState(null)
   const [modalConfirm, setModalConfirm] = useState(null)
   const [notif, setNotif] = useState({})
+  const [vista, setVista] = useState('cobros') // 'cobros' | 'cuentas'
   const esAdmin = sesion.rol === 'admin'
 
   const cargarDatos = useCallback(async () => {
@@ -622,11 +623,26 @@ function App({ sesion, onLogout }) {
             </div>
           </div>
 
-          {/* Alerta */}
-          {urgentes3 > 0 && <div style={{fontSize:11,color:'var(--red)',fontWeight:700,marginBottom:8,fontFamily:'var(--mono)'}}>🔴 {urgentes3} cliente{urgentes3>1?'s':''} · ≤3 días</div>}
-
-          {/* Resumen (admin) */}
+          {/* Tabs — solo admin */}
           {esAdmin && (
+            <div style={{display:'flex',gap:6,marginBottom:10}}>
+              {[{val:'cobros',label:'💳 Cobros'},{val:'cuentas',label:'🗂️ Cuentas'}].map(t=>(
+                <button key={t.val} onClick={()=>setVista(t.val)} style={{
+                  background:vista===t.val?'var(--accent)':'var(--bg2)',
+                  color:vista===t.val?'#fff':'var(--text3)',
+                  border:`1px solid ${vista===t.val?'var(--accent)':'var(--border)'}`,
+                  borderRadius:8,padding:'6px 14px',cursor:'pointer',fontSize:12,fontWeight:700,
+                  transition:'all 0.15s',
+                }}>{t.label}</button>
+              ))}
+            </div>
+          )}
+
+          {/* Alerta */}
+          {vista==='cobros' && urgentes3 > 0 && <div style={{fontSize:11,color:'var(--red)',fontWeight:700,marginBottom:8,fontFamily:'var(--mono)'}}>🔴 {urgentes3} cliente{urgentes3>1?'s':''} · ≤3 días</div>}
+
+          {/* Solo mostrar filtros/resumen en vista cobros */}
+          {vista==='cobros' && esAdmin && (
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,marginBottom:10,overflow:'hidden'}}>
               <button onClick={()=>setVerRes(!verRes)} style={{width:'100%',background:'none',border:'none',padding:'10px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',color:'var(--text2)'}}>
                 <span style={{fontSize:12,fontWeight:600}}>💰 Resumen del mes</span>
@@ -826,10 +842,175 @@ function App({ sesion, onLogout }) {
             {filtrados.length} / {data.length} clientes
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
+
+// ─── CUENTAS VIEW ──────────────────────────────────────────
+function CuentasView() {
+  const [cuentas, setCuentas] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editando, setEditando] = useState(null) // perfil id
+  const [editVal, setEditVal] = useState('')
+  const [buscar, setBuscar] = useState('')
+  const [filtroSvc, setFiltroSvc] = useState('')
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('cuentas_maestras')
+      .select('*, perfiles_espacios(*)')
+      .order('servicio')
+    if (!error) setCuentas(data || [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const serviciosUnicos = [...new Set(cuentas.map(c => c.servicio))].sort()
+
+  const cuentasFiltradas = cuentas.filter(c => {
+    const okSvc = !filtroSvc || c.servicio === filtroSvc
+    const okQ = !buscar || c.servicio.toLowerCase().includes(buscar.toLowerCase()) ||
+      c.vinculada?.toLowerCase().includes(buscar.toLowerCase()) ||
+      c.perfiles_espacios?.some(p => (p.cliente_nombre||'').toLowerCase().includes(buscar.toLowerCase()))
+    return okSvc && okQ
+  })
+
+  async function guardarCliente(perfilId, nuevoCliente) {
+    const val = nuevoCliente.trim() || null
+    await supabase.from('perfiles_espacios').update({
+      cliente_nombre: val,
+      notas: val ? null : 'DISPONIBLE'
+    }).eq('id', perfilId)
+    setEditando(null)
+    cargar()
+  }
+
+  if (loading) return <div style={{textAlign:'center',padding:'60px 0',color:'var(--text3)'}}>⏳ Cargando cuentas...</div>
+
+  return (
+    <div style={{maxWidth:520,margin:'0 auto',padding:'14px 16px 0'}}>
+      {/* Buscador */}
+      <div style={{position:'relative',marginBottom:8}}>
+        <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:13}}>🔍</span>
+        <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar servicio, vinculada o cliente..."
+          style={{...inputSt,paddingLeft:36}}/>
+      </div>
+
+      {/* Filtros por servicio */}
+      <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:12,paddingBottom:2}}>
+        <button onClick={()=>setFiltroSvc('')} style={{...chipSt(filtroSvc==='')}}> Todos</button>
+        {serviciosUnicos.map(s=>(
+          <button key={s} onClick={()=>setFiltroSvc(filtroSvc===s?'':s)} style={{...chipSt(filtroSvc===s)}}>{s}</button>
+        ))}
+      </div>
+
+      {/* Cuentas */}
+      {cuentasFiltradas.map(cuenta => {
+        const perfiles = (cuenta.perfiles_espacios || []).sort((a,b) => String(a.perfil).localeCompare(String(b.perfil), undefined, {numeric:true}))
+        const disponibles = perfiles.filter(p => !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE').length
+        const total = perfiles.length
+
+        return (
+          <div key={cuenta.id} style={{background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:14,padding:'14px 16px',marginBottom:10}}>
+            {/* Header cuenta */}
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:800,fontSize:15,letterSpacing:'-0.01em'}}>{cuenta.servicio}</div>
+                <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
+                  <span style={{background:'rgba(167,139,250,0.12)',color:'var(--purple)',padding:'1px 7px',borderRadius:5,fontSize:10,fontWeight:600}}>{cuenta.vinculada}</span>
+                  {cuenta.correo && <span style={{marginLeft:6,color:'var(--text3)'}}>{cuenta.correo}</span>}
+                </div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:12,fontWeight:700,color:disponibles>0?'var(--green)':'var(--text3)'}}>
+                  {disponibles} libre{disponibles!==1?'s':''}
+                </div>
+                <div style={{fontSize:10,color:'var(--text3)'}}>{total - disponibles}/{total} ocupados</div>
+              </div>
+            </div>
+
+            {/* Perfiles */}
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {perfiles.map(p => {
+                const esDisponible = !p.cliente_nombre || p.cliente_nombre.toUpperCase()==='DISPONIBLE' || (p.notas||'').toUpperCase()==='DISPONIBLE'
+                const isEditando = editando === p.id
+
+                return (
+                  <div key={p.id} style={{
+                    background:'var(--bg2)',border:`1px solid ${esDisponible?'rgba(52,211,153,0.2)':'var(--border2)'}`,
+                    borderRadius:8,padding:'8px 10px',
+                    display:'flex',alignItems:'center',gap:8,
+                  }}>
+                    {/* Perfil # */}
+                    <div style={{
+                      minWidth:32,height:32,borderRadius:6,
+                      background:esDisponible?'rgba(52,211,153,0.1)':'var(--bg1)',
+                      border:`1px solid ${esDisponible?'rgba(52,211,153,0.3)':'var(--border)'}`,
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                      fontSize:11,fontWeight:800,color:esDisponible?'var(--green)':'var(--text2)',
+                      flexShrink:0,
+                    }}>{p.perfil}</div>
+
+                    {/* Info */}
+                    <div style={{flex:1,minWidth:0}}>
+                      {isEditando ? (
+                        <div style={{display:'flex',gap:6}}>
+                          <input value={editVal} onChange={e=>setEditVal(e.target.value)}
+                            onKeyDown={e=>{ if(e.key==='Enter') guardarCliente(p.id,editVal); if(e.key==='Escape') setEditando(null) }}
+                            placeholder="Nombre del cliente..." autoFocus
+                            style={{...inputSt,padding:'4px 8px',fontSize:12,flex:1}}/>
+                          <button onClick={()=>guardarCliente(p.id,editVal)} style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700}}>✓</button>
+                          <button onClick={()=>setEditando(null)} style={{background:'var(--bg1)',color:'var(--text3)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',cursor:'pointer',fontSize:11}}>✕</button>
+                        </div>
+                      ) : (
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <span style={{fontSize:13,fontWeight:esDisponible?400:600,color:esDisponible?'var(--green)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                            {esDisponible ? 'DISPONIBLE' : p.cliente_nombre}
+                          </span>
+                          {p.notas && !esDisponible && <span style={{fontSize:10,color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>· {p.notas}</span>}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* PIN */}
+                    {p.pin && (
+                      <div style={{flexShrink:0,background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:6,padding:'3px 8px',fontSize:11,fontWeight:700,color:'var(--yellow)',fontFamily:'var(--mono)',letterSpacing:'0.05em'}}>
+                        {p.pin}
+                      </div>
+                    )}
+
+                    {/* Editar */}
+                    {!isEditando && (
+                      <button onClick={()=>{ setEditando(p.id); setEditVal(esDisponible?'':p.cliente_nombre||'') }}
+                        style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:14,padding:'2px 4px',flexShrink:0}}>✏️</button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── SHARED STYLES ─────────────────────────────────────────
+const inputSt = {
+  width:'100%',boxSizing:'border-box',background:'var(--bg2)',
+  border:'1px solid var(--border2)',borderRadius:8,padding:'10px 12px',
+  color:'var(--text)',fontSize:13,fontFamily:'inherit',outline:'none',
+}
+const chipSt = (active) => ({
+  background:active?'rgba(91,142,240,0.15)':'var(--bg2)',
+  color:active?'var(--accent)':'var(--text3)',
+  border:`1px solid ${active?'rgba(91,142,240,0.4)':'var(--border)'}`,
+  borderRadius:8,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600,
+  whiteSpace:'nowrap',flexShrink:0,transition:'all 0.15s',
+})
 
 // ─── ROOT ─────────────────────────────────────────────────
 export default function Root() {
