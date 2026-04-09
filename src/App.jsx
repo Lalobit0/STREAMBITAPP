@@ -641,7 +641,7 @@ function App({ sesion, onLogout }) {
           {/* Alerta */}
           {vista==='cobros' && urgentes3 > 0 && <div style={{fontSize:11,color:'var(--red)',fontWeight:700,marginBottom:8,fontFamily:'var(--mono)'}}>🔴 {urgentes3} cliente{urgentes3>1?'s':''} · ≤3 días</div>}
 
-          {/* Solo mostrar filtros/resumen en vista cobros */}
+          {/* Resumen - solo en cobros */}
           {vista==='cobros' && esAdmin && (
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,marginBottom:10,overflow:'hidden'}}>
               <button onClick={()=>setVerRes(!verRes)} style={{width:'100%',background:'none',border:'none',padding:'10px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',color:'var(--text2)'}}>
@@ -693,22 +693,19 @@ function App({ sesion, onLogout }) {
             </div>
           )}
 
-          {/* Buscador */}
+          {/* Buscador + filtros — solo en cobros */}
+          {vista === 'cobros' && <>
           <div style={{position:'relative',marginBottom:8}}>
             <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:14}}>⌕</span>
             <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar nombre, servicio o vinculada..."
               style={{paddingLeft:34}} />
           </div>
-
-          {/* Filtros vinculada */}
           <div className="scroll-x" style={{marginBottom:8}}>
             <button className={`pill ${filtroVinc===''?'pill-active':''}`} onClick={()=>setFiltroVinc('')}>Todas</button>
             {VINCULADAS.map(v => (
               <button key={v} className={`pill ${filtroVinc===v?'pill-vinc-active':''}`} onClick={()=>setFiltroVinc(filtroVinc===v?'':v)}>{v}</button>
             ))}
           </div>
-
-          {/* Filtros tiempo + orden */}
           <div className="scroll-x">
             {FILTROS.map(f => (
               <button key={f.val} className={`pill ${filtro===f.val?'pill-active':''}`} onClick={()=>setFiltro(f.val)}>{f.label}</button>
@@ -718,11 +715,15 @@ function App({ sesion, onLogout }) {
               <button key={o.val} className={`pill ${orden===o.val?'pill-active':''}`} onClick={()=>setOrden(o.val)}>{o.label}</button>
             ))}
           </div>
+          </>}
         </div>
       </div>
 
+      {/* Vista Cuentas */}
+      {vista === 'cuentas' && esAdmin && <CuentasView />}
+
       {/* LISTA */}
-      <div style={{maxWidth:520,margin:'0 auto',padding:'12px 16px 0'}}>
+      {vista === 'cobros' && <div style={{maxWidth:520,margin:'0 auto',padding:'12px 16px 0'}}>
         {loading ? (
           <div style={{textAlign:'center',padding:'60px 0',color:'var(--text3)'}}>
             <div style={{fontSize:32,marginBottom:8}}>⏳</div>
@@ -843,6 +844,7 @@ function App({ sesion, onLogout }) {
           </div>
         )}
       </div>}
+    </div>}
     </div>
   )
 }
