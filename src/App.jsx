@@ -723,7 +723,8 @@ function App({ sesion, onLogout }) {
       {vista === 'cuentas' && esAdmin && <CuentasView />}
 
       {/* LISTA */}
-      {vista === 'cobros' && <div style={{maxWidth:520,margin:'0 auto',padding:'12px 16px 0'}}>
+      {vista === 'cobros' && (
+      <div style={{maxWidth:520,margin:'0 auto',padding:'12px 16px 0'}}>
         {loading ? (
           <div style={{textAlign:'center',padding:'60px 0',color:'var(--text3)'}}>
             <div style={{fontSize:32,marginBottom:8}}>⏳</div>
@@ -843,8 +844,8 @@ function App({ sesion, onLogout }) {
             {filtrados.length} / {data.length} clientes
           </div>
         )}
-      </div>}
-    </div>}
+      </div>
+      )}
     </div>
   )
 }
