@@ -469,7 +469,7 @@ function App({ sesion, onLogout }) {
       const { data: serviciosData, error: e } = await supabase
         .from('servicios')
         .select('*, clientes(id, nombre, telefono)')
-        .not('notas', 'ilike', 'CANCELADO%')
+        .eq('cancelado', false)
         .order('fecha_vencimiento', { ascending: true })
       if (e) throw e
 
@@ -509,34 +509,18 @@ function App({ sesion, onLogout }) {
 
   const filtrados = useMemo(() => {
     const q = buscar.toLowerCase()
-    let lista = data.filter(({ cliente, servicios }) => {
-      const matchQ = !q || cliente.nombre.toLowerCase().includes(q) ||
+    let lista = data.filter(({ cliente, servicios, dMin }) => {
+      const matchQ = !q ||
+        cliente.nombre.toLowerCase().includes(q) ||
         servicios.some(s => s.cuenta.toLowerCase().includes(q)) ||
         servicios.some(s => s.vinculada && s.vinculada.toLowerCase().includes(q))
       const matchV = !filtroVinc || servicios.some(s => s.vinculada === filtroVinc)
       const ok = matchQ && matchV
-      if (filtro==='vencidos') return ok && typeof data.dMin === 'number' // handled below
-      const d = data.find(x => x.cliente.id === cliente.id)?.dMin
-      if (filtro==='vencidos') return ok && d !== null && d < 0
-      if (filtro==='hoy')      return ok && d === 0
-      if (filtro==='3dias')    return ok && d !== null && d >= 0 && d <= 3
-      if (filtro==='semana')   return ok && d !== null && d >= 0 && d <= 7
-      if (filtro==='mes')      return ok && d !== null && d >= 0 && d <= 30
-      return ok
-    })
-    // Re-filter with correct dMin
-    lista = data.filter(({ cliente, servicios, dMin }) => {
-      const q2 = buscar.toLowerCase()
-      const matchQ = !q2 || cliente.nombre.toLowerCase().includes(q2) ||
-        servicios.some(s => s.cuenta.toLowerCase().includes(q2)) ||
-        servicios.some(s => s.vinculada && s.vinculada.toLowerCase().includes(q2))
-      const matchV = !filtroVinc || servicios.some(s => s.vinculada === filtroVinc)
-      const ok = matchQ && matchV
-      if (filtro==='vencidos') return ok && dMin !== null && dMin < 0
-      if (filtro==='hoy')      return ok && dMin === 0
-      if (filtro==='3dias')    return ok && dMin !== null && dMin >= 0 && dMin <= 3
-      if (filtro==='semana')   return ok && dMin !== null && dMin >= 0 && dMin <= 7
-      if (filtro==='mes')      return ok && dMin !== null && dMin >= 0 && dMin <= 30
+      if (filtro === 'vencidos') return ok && dMin !== null && dMin < 0
+      if (filtro === 'hoy')      return ok && dMin === 0
+      if (filtro === '3dias')    return ok && dMin !== null && dMin >= 0 && dMin <= 3
+      if (filtro === 'semana')   return ok && dMin !== null && dMin >= 0 && dMin <= 7
+      if (filtro === 'mes')      return ok && dMin !== null && dMin >= 0 && dMin <= 30
       return ok
     })
     if (orden === 'nombre') lista = [...lista].sort((a,b) => a.cliente.nombre.localeCompare(b.cliente.nombre))
