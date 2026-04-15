@@ -372,12 +372,71 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId, clientes
   )
 }
 
+// ─── MODAL COBRAR + RENOVAR ───────────────────────────────
+function ModalCobrarRenovar({ servicio, cliente, onGuardar, onCerrar }) {
+  const [fecha, setFecha] = useState('')
+  const [notas, setNotas] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function confirmar() {
+    if (!fecha) return setError('Selecciona la nueva fecha de vencimiento')
+    setSaving(true); setError('')
+    try {
+      const { error: e } = await supabase.from('servicios').update({
+        cobrado: fechaHoy(),
+        cobrado_en: fechaHoy(),
+        estado: 'ACTIVO',
+        fecha_vencimiento: fecha,
+        notas: notas ? (servicio.notas ? servicio.notas + ' | ' + notas : notas) : servicio.notas,
+      }).eq('id', servicio.id)
+      if (e) throw e
+      onGuardar(); onCerrar()
+    } catch(e) { setError('Error: ' + e.message); setSaving(false) }
+  }
+
+  return (
+    <Modal onClose={onCerrar}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:18}}>✅ Cobrar y Renovar</div>
+          <div style={{fontSize:12,color:'var(--text2)',fontFamily:'var(--mono)',marginTop:2}}>{cliente} · {servicio.cuenta}</div>
+        </div>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
+      </div>
+      {/* Info actual */}
+      <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:3}}>VENCIMIENTO ACTUAL</div>
+          <div style={{fontSize:14,fontWeight:700,fontFamily:'var(--mono)',color:'var(--text)'}}>{formatFecha(servicio.fecha_vencimiento)}</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:3}}>SE REGISTRARÁ</div>
+          <div style={{fontSize:12,fontWeight:700,color:'var(--green)',fontFamily:'var(--mono)'}}>Cobrado hoy ✅</div>
+        </div>
+      </div>
+      <div style={{marginBottom:14}}>
+        <SelectorFecha value={fecha} onChange={setFecha} label="NUEVA FECHA DE VENCIMIENTO *" />
+      </div>
+      <div style={{marginBottom:20}}>
+        <label>NOTAS (opcional)</label>
+        <input value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej: Pagó en efectivo, renovó 3 meses..." />
+      </div>
+      {error && <div style={{background:'#1a0008',border:'1px solid #ff336630',borderRadius:8,padding:'8px 12px',marginBottom:14,fontSize:12,color:'var(--red)'}}>⚠️ {error}</div>}
+      <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:15}} onClick={confirmar} disabled={saving}>
+        {saving ? 'Guardando...' : fecha ? `✅ Cobrar y renovar → ${formatFecha(fecha)}` : '✅ Cobrar y renovar'}
+      </button>
+    </Modal>
+  )
+}
+
 // ─── MODAL RENOVAR ────────────────────────────────────────
 function ModalRenovar({ servicio, cliente, onRenovar, onCerrar }) {
   const [fecha, setFecha] = useState('')
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const yaCobrado = !!servicio.cobrado
 
   async function renovar() {
     if (!fecha) return setError('Selecciona una fecha')
@@ -400,7 +459,21 @@ function ModalRenovar({ servicio, cliente, onRenovar, onCerrar }) {
         </div>
         <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
       </div>
-      <div style={{fontSize:11,color:'var(--text3)',marginBottom:14,fontFamily:'var(--mono)'}}>FECHA ACTUAL: {formatFecha(servicio.fecha_vencimiento)}</div>
+      {/* Indicador de estado cobro */}
+      <div style={{display:'flex',gap:8,marginBottom:14}}>
+        <div style={{flex:1,background:yaCobrado?'#001a0e':'#1a0800',border:`1px solid ${yaCobrado?'#00ff8840':'#ff8c0040'}`,borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
+          <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:2}}>COBRO</div>
+          <div style={{fontSize:12,fontWeight:700,color:yaCobrado?'var(--green)':'var(--orange)'}}>
+            {yaCobrado ? `✅ ${formatFecha(servicio.cobrado)}` : '⏳ Pendiente'}
+          </div>
+        </div>
+        <div style={{flex:1,background:'#001a14',border:'1px solid #00d4ff20',borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
+          <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:2}}>VENCE</div>
+          <div style={{fontSize:12,fontWeight:700,color:'var(--cyan)',fontFamily:'var(--mono)'}}>
+            {formatFecha(servicio.fecha_vencimiento)}
+          </div>
+        </div>
+      </div>
       <div style={{marginBottom:14}}>
         <SelectorFecha value={fecha} onChange={setFecha} label="NUEVA FECHA DE VENCIMIENTO" />
       </div>
@@ -611,6 +684,7 @@ function App({ sesion, onLogout }) {
   const [ultimaAct, setUltimaAct] = useState(null)
   const [modalForm, setModalForm] = useState(null)
   const [modalRenovar, setModalRenovar] = useState(null)
+  const [modalCobrarRenovar, setModalCobrarRenovar] = useState(null)
   const [modalEditar, setModalEditar] = useState(null)
   const [modalEditarCliente, setModalEditarCliente] = useState(null)
   const [modalConfirm, setModalConfirm] = useState(null)
@@ -758,6 +832,7 @@ function App({ sesion, onLogout }) {
 
       {modalForm && <ModalServicio clienteId={modalForm.clienteId} clienteNombre={modalForm.clienteNombre} onGuardar={cargarDatos} onCerrar={()=>setModalForm(null)} />}
       {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={cargarDatos} onCerrar={()=>setModalRenovar(null)} />}
+      {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={cargarDatos} onCerrar={()=>setModalCobrarRenovar(null)} />}
       {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={cargarDatos} onCerrar={()=>setModalEditar(null)} />}
       {modalEditarCliente && <ModalEditarCliente cliente={modalEditarCliente} onGuardar={cargarDatos} onCerrar={()=>setModalEditarCliente(null)} />}
       {modalConfirm && <ModalConfirm {...modalConfirm} onCancelar={()=>setModalConfirm(null)} />}
@@ -967,12 +1042,9 @@ function App({ sesion, onLogout }) {
                           <div style={{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
                             {!s.cobrado && (
                               <button className="btn btn-success" style={{padding:'2px 8px',fontSize:10}}
-                                onClick={()=>setModalConfirm({
-                                  mensaje:'¿Marcar como cobrado?',
-                                  detalle:`${cliente.nombre} · ${s.cuenta}\nSe registra la fecha de hoy.`,
-                                  colorBtn:'var(--green)',textoBtn:'✅ Cobrado',
-                                  onConfirmar:()=>{marcarCobrado(s);setModalConfirm(null)}
-                                })}>✅ Cobrado</button>
+                                onClick={()=>setModalCobrarRenovar({servicio:s,cliente:cliente.nombre})}>
+                                ✅ Cobrado
+                              </button>
                             )}
                             <div style={{flex:1}}/>
                             <button className="btn" style={{padding:'2px 8px',fontSize:10,background:'transparent',color:'var(--cyan)',border:'1px solid #00d4ff30'}}
@@ -984,8 +1056,15 @@ function App({ sesion, onLogout }) {
                                 colorBtn:'var(--orange)',textoBtn:'Cancelar',
                                 onConfirmar:()=>{cancelar(s);setModalConfirm(null)}
                               })}>❌</button>
-                            <button className="btn btn-renew" style={{padding:'2px 8px',fontSize:10}}
-                              onClick={()=>setModalRenovar({servicio:s,cliente:cliente.nombre})}>🔄 Renovar</button>
+                            <button className="btn" style={{
+                                padding:'2px 8px',fontSize:10,
+                                background:'transparent',
+                                color: s.cobrado ? 'var(--green)' : 'var(--cyan)',
+                                border: `1px solid ${s.cobrado ? '#00ff8840' : '#00d4ff30'}`,
+                              }}
+                              onClick={()=>setModalRenovar({servicio:s,cliente:cliente.nombre})}>
+                              {s.cobrado ? '✅ Renovar' : '🔄 Renovar'}
+                            </button>
                             <button className="btn btn-danger" style={{padding:'2px 8px',fontSize:10}}
                               onClick={()=>setModalConfirm({
                                 mensaje:'¿Eliminar servicio?',
