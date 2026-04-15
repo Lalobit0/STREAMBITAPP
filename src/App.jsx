@@ -662,13 +662,11 @@ function Login({ onLogin }) {
 
 // ─── APP PRINCIPAL ────────────────────────────────────────
 const FILTROS = [
-  {val:'todos',label:'Todos'},
-  {val:'vencidos',label:'💀 Vencidos'},
-  {val:'hoy',label:'🔴 Hoy'},
-  {val:'3dias',label:'🔴 ≤3d'},
-  {val:'semana',label:'🟠 7d'},
-  {val:'mes',label:'🟡 30d'},
-  {val:'cobrados',label:'✅ Cobrados'},
+  {val:'todos',    label:'Todos'},
+  {val:'vencidos', label:'💀 Vencidos'},
+  {val:'hoy',      label:'🔴 Hoy'},
+  {val:'3dias',    label:'🔴 ≤3d'},
+  {val:'cobrados', label:'✅ Cobrados'},
   {val:'pendientes',label:'⏳ Pendientes'},
 ]
 
@@ -928,25 +926,81 @@ function App({ sesion, onLogout }) {
 
           {/* Buscador + filtros — solo en cobros */}
           {vista === 'cobros' && <>
-          <div style={{position:'relative',marginBottom:8}}>
+          <div style={{position:'relative',marginBottom:10}}>
             <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:14}}>⌕</span>
             <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar nombre, servicio o vinculada..."
               style={{paddingLeft:34}} />
           </div>
-          <div className="scroll-x" style={{marginBottom:8}}>
-            <button className={`pill ${filtroVinc===''?'pill-active':''}`} onClick={()=>setFiltroVinc('')}>Todas</button>
-            {VINCULADAS.map(v => (
-              <button key={v} className={`pill ${filtroVinc===v?'pill-vinc-active':''}`} onClick={()=>setFiltroVinc(filtroVinc===v?'':v)}>{v}</button>
-            ))}
+
+          {/* Vinculadas — con label */}
+          <div style={{marginBottom:8}}>
+            <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,fontFamily:'var(--mono)',marginBottom:5,letterSpacing:'0.05em'}}>CUENTA</div>
+            <div className="scroll-x">
+              <button onClick={()=>setFiltroVinc('')}
+                style={{
+                  padding:'5px 12px',borderRadius:20,border:'none',cursor:'pointer',
+                  fontSize:11,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,
+                  background: filtroVinc==='' ? 'var(--cyan)' : 'var(--bg2)',
+                  color: filtroVinc==='' ? 'var(--bg)' : 'var(--text3)',
+                  transition:'all .15s',
+                }}>Todas</button>
+              {VINCULADAS.map(v => {
+                const active = filtroVinc === v
+                return (
+                  <button key={v} onClick={()=>setFiltroVinc(active?'':v)}
+                    style={{
+                      padding:'5px 12px',borderRadius:20,cursor:'pointer',
+                      fontSize:11,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,
+                      border: `1px solid ${active?'#9d4edd':'#2d3a5a'}`,
+                      background: active ? 'rgba(157,78,221,0.2)' : 'var(--bg2)',
+                      color: active ? '#d8b4fe' : 'var(--text3)',
+                      transition:'all .15s',
+                    }}>{v}</button>
+                )
+              })}
+            </div>
           </div>
-          <div className="scroll-x">
-            {FILTROS.map(f => (
-              <button key={f.val} className={`pill ${filtro===f.val?'pill-active':''}`} onClick={()=>setFiltro(f.val)}>{f.label}</button>
-            ))}
-            <div style={{width:1,background:'var(--border)',flexShrink:0,margin:'0 2px'}}/>
-            {[{val:'fecha',label:'📅'},{val:'nombre',label:'🔤'},{val:'precio',label:'💰'}].map(o => (
-              <button key={o.val} className={`pill ${orden===o.val?'pill-active':''}`} onClick={()=>setOrden(o.val)}>{o.label}</button>
-            ))}
+
+          {/* Filtros de fecha/estado + orden */}
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div className="scroll-x" style={{flex:1}}>
+              {FILTROS.map(f => {
+                const active = filtro === f.val
+                const colors = {
+                  todos:     {bg:'var(--bg2)',  active:'var(--cyan)',   border:'var(--cyan)'},
+                  vencidos:  {bg:'var(--bg2)',  active:'var(--red)',    border:'var(--red)'},
+                  hoy:       {bg:'var(--bg2)',  active:'var(--red)',    border:'var(--red)'},
+                  '3dias':   {bg:'var(--bg2)',  active:'var(--red)',    border:'var(--red)'},
+                  cobrados:  {bg:'var(--bg2)',  active:'var(--green)',  border:'var(--green)'},
+                  pendientes:{bg:'var(--bg2)',  active:'var(--orange)', border:'var(--orange)'},
+                }
+                const c = colors[f.val] || colors.todos
+                return (
+                  <button key={f.val} onClick={()=>setFiltro(f.val)}
+                    style={{
+                      padding:'5px 12px',borderRadius:20,cursor:'pointer',
+                      fontSize:11,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,border:'1px solid',
+                      borderColor: active ? c.border : 'var(--border)',
+                      background: active ? `${c.active}22` : 'var(--bg2)',
+                      color: active ? c.active : 'var(--text3)',
+                      transition:'all .15s',
+                    }}>{f.label}</button>
+                )
+              })}
+            </div>
+            {/* Ordenar */}
+            <div style={{display:'flex',gap:4,flexShrink:0}}>
+              {[{val:'fecha',label:'📅'},{val:'nombre',label:'🔤'},{val:'precio',label:'💰'}].map(o => (
+                <button key={o.val} onClick={()=>setOrden(o.val)}
+                  style={{
+                    width:30,height:30,borderRadius:8,border:`1px solid ${orden===o.val?'var(--cyan)':'var(--border)'}`,
+                    background:orden===o.val?'rgba(0,212,255,0.1)':'var(--bg2)',
+                    color:orden===o.val?'var(--cyan)':'var(--text3)',
+                    cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center',
+                    transition:'all .15s',
+                  }}>{o.label}</button>
+              ))}
+            </div>
           </div>
           </>}
         </div>
