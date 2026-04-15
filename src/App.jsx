@@ -926,79 +926,80 @@ function App({ sesion, onLogout }) {
 
           {/* Buscador + filtros — solo en cobros */}
           {vista === 'cobros' && <>
+          {/* Buscador */}
           <div style={{position:'relative',marginBottom:10}}>
             <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:14}}>⌕</span>
             <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar nombre, servicio o vinculada..."
               style={{paddingLeft:34}} />
           </div>
 
-          {/* Vinculadas — con label */}
-          <div style={{marginBottom:8}}>
-            <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,fontFamily:'var(--mono)',marginBottom:5,letterSpacing:'0.05em'}}>CUENTA</div>
-            <div className="scroll-x">
-              <button onClick={()=>setFiltroVinc('')}
-                style={{
-                  padding:'5px 12px',borderRadius:20,border:'none',cursor:'pointer',
-                  fontSize:11,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,
-                  background: filtroVinc==='' ? 'var(--cyan)' : 'var(--bg2)',
-                  color: filtroVinc==='' ? 'var(--bg)' : 'var(--text3)',
-                  transition:'all .15s',
-                }}>Todas</button>
+          {/* Vinculadas */}
+          <div style={{marginBottom:10,background:'var(--bg2)',borderRadius:12,padding:'8px 10px',border:'1px solid var(--border)'}}>
+            <div style={{fontSize:9,color:'var(--text3)',fontWeight:700,fontFamily:'var(--mono)',marginBottom:6,letterSpacing:'0.08em'}}>🔗 FILTRAR POR CUENTA</div>
+            <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+              {/* Todas */}
+              <button onClick={()=>setFiltroVinc('')} style={{
+                padding:'4px 12px',borderRadius:6,border:'none',cursor:'pointer',
+                fontSize:11,fontWeight:700,whiteSpace:'nowrap',
+                background: filtroVinc==='' ? 'var(--cyan)' : 'var(--bg3)',
+                color: filtroVinc==='' ? 'var(--bg)' : 'var(--text2)',
+                boxShadow: filtroVinc==='' ? '0 0 8px #00d4ff40' : 'none',
+                transition:'all .15s',
+              }}>Todas</button>
               {VINCULADAS.map(v => {
                 const active = filtroVinc === v
                 return (
-                  <button key={v} onClick={()=>setFiltroVinc(active?'':v)}
-                    style={{
-                      padding:'5px 12px',borderRadius:20,cursor:'pointer',
-                      fontSize:11,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,
-                      border: `1px solid ${active?'#9d4edd':'#2d3a5a'}`,
-                      background: active ? 'rgba(157,78,221,0.2)' : 'var(--bg2)',
-                      color: active ? '#d8b4fe' : 'var(--text3)',
-                      transition:'all .15s',
-                    }}>{v}</button>
+                  <button key={v} onClick={()=>setFiltroVinc(active?'':v)} style={{
+                    padding:'4px 12px',borderRadius:6,cursor:'pointer',
+                    fontSize:11,fontWeight:700,whiteSpace:'nowrap',
+                    border: `1px solid ${active?'#9d4edd80':'transparent'}`,
+                    background: active ? 'rgba(157,78,221,0.25)' : 'var(--bg3)',
+                    color: active ? '#e9d5ff' : 'var(--text2)',
+                    boxShadow: active ? '0 0 8px #9d4edd30' : 'none',
+                    transition:'all .15s',
+                  }}>{v}</button>
                 )
               })}
             </div>
           </div>
 
-          {/* Filtros de fecha/estado + orden */}
+          {/* Filtros estado + orden */}
           <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <div className="scroll-x" style={{flex:1}}>
+            <div style={{display:'flex',gap:4,flexWrap:'wrap',flex:1}}>
               {FILTROS.map(f => {
                 const active = filtro === f.val
-                const colors = {
-                  todos:     {bg:'var(--bg2)',  active:'var(--cyan)',   border:'var(--cyan)'},
-                  vencidos:  {bg:'var(--bg2)',  active:'var(--red)',    border:'var(--red)'},
-                  hoy:       {bg:'var(--bg2)',  active:'var(--red)',    border:'var(--red)'},
-                  '3dias':   {bg:'var(--bg2)',  active:'var(--red)',    border:'var(--red)'},
-                  cobrados:  {bg:'var(--bg2)',  active:'var(--green)',  border:'var(--green)'},
-                  pendientes:{bg:'var(--bg2)',  active:'var(--orange)', border:'var(--orange)'},
+                const colMap = {
+                  todos:      '#00d4ff',
+                  vencidos:   '#ff3366',
+                  hoy:        '#ff3366',
+                  '3dias':    '#ff6b6b',
+                  cobrados:   '#00ff88',
+                  pendientes: '#ff8c00',
                 }
-                const c = colors[f.val] || colors.todos
+                const col = colMap[f.val] || '#00d4ff'
                 return (
-                  <button key={f.val} onClick={()=>setFiltro(f.val)}
-                    style={{
-                      padding:'5px 12px',borderRadius:20,cursor:'pointer',
-                      fontSize:11,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,border:'1px solid',
-                      borderColor: active ? c.border : 'var(--border)',
-                      background: active ? `${c.active}22` : 'var(--bg2)',
-                      color: active ? c.active : 'var(--text3)',
-                      transition:'all .15s',
-                    }}>{f.label}</button>
+                  <button key={f.val} onClick={()=>setFiltro(f.val)} style={{
+                    padding:'4px 11px',borderRadius:6,cursor:'pointer',
+                    fontSize:11,fontWeight:700,whiteSpace:'nowrap',
+                    border:`1px solid ${active ? col+'80' : 'transparent'}`,
+                    background: active ? col+'22' : 'var(--bg2)',
+                    color: active ? col : 'var(--text3)',
+                    boxShadow: active ? `0 0 6px ${col}25` : 'none',
+                    transition:'all .15s',
+                  }}>{f.label}</button>
                 )
               })}
             </div>
-            {/* Ordenar */}
-            <div style={{display:'flex',gap:4,flexShrink:0}}>
-              {[{val:'fecha',label:'📅'},{val:'nombre',label:'🔤'},{val:'precio',label:'💰'}].map(o => (
-                <button key={o.val} onClick={()=>setOrden(o.val)}
-                  style={{
-                    width:30,height:30,borderRadius:8,border:`1px solid ${orden===o.val?'var(--cyan)':'var(--border)'}`,
-                    background:orden===o.val?'rgba(0,212,255,0.1)':'var(--bg2)',
-                    color:orden===o.val?'var(--cyan)':'var(--text3)',
-                    cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center',
-                    transition:'all .15s',
-                  }}>{o.label}</button>
+            {/* Orden — iconos con tooltip-like text */}
+            <div style={{display:'flex',gap:3,flexShrink:0,borderLeft:'1px solid var(--border)',paddingLeft:6}}>
+              {[{val:'fecha',label:'📅',tip:'Fecha'},{val:'nombre',label:'🔤',tip:'Nombre'},{val:'precio',label:'💰',tip:'Precio'}].map(o => (
+                <button key={o.val} onClick={()=>setOrden(o.val)} title={o.tip} style={{
+                  padding:'4px 7px',borderRadius:6,
+                  border:`1px solid ${orden===o.val?'var(--cyan)':'transparent'}`,
+                  background:orden===o.val?'rgba(0,212,255,0.12)':'var(--bg2)',
+                  color:orden===o.val?'var(--cyan)':'var(--text3)',
+                  cursor:'pointer',fontSize:12,transition:'all .15s',
+                }}>{o.label}</button>
               ))}
             </div>
           </div>
