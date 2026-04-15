@@ -1,855 +1,1135 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { supabase } from './supabase.js'
 
-// ─── CONFIG ───────────────────────────────────────────────
-const SHEET_CSV  = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS2zZwes2sBIGWHuBxBG56_7QpKC-bzp7fe7qphlGzD2roQkUyYvn12CIG1fdrAt-Q0GbPtdUwnZdJR/pub?gid=918785499&single=true&output=csv";
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzOTSUtzWW8eiK3k7CDC58i3twKMj29KgO35mtdlUB-IDSMw3G_1EiJQWkxS4jHkgMAZA/exec";
+// ─── CONSTANTES ───────────────────────────────────────────
+const VINCULADAS = ['SIX','Lalobit','ed.perma out','EDGAR.PERMA','ARES','Laloshop','edd.perma gmail']
+const SERVICIOS  = ['Netflix','Netflix extra','Netflix genérico','HBO HD','HBO 4K','HBO PLATINO','Disney 4K','Disney HD','PRIME','Paramount','VIX','Crunchyroll','Spotify','Spotify 3','ChatGPT gen','ChatGPT+','Office','Office3','Office12','Canva1','Canva12','APPLE ONE','Apple TV','Youtubep1','Youtubep3','ARES1','ARES2','ARES12','IPTVLAT1','IPTVLAT3']
 
-const USUARIOS = {
-  Admin:    { pass: "Karina.25",  rol: "admin" },
-  Angelica: { pass: "Damian123",  rol: "ayudante" },
-};
-
-const VINCULADAS_LISTA = ["SIX","Lalobit","ed.perma out","EDGAR.PERMA","ARES","Laloshop","edd.perma gmail"];
-const SERVICIOS_LISTA  = ["Netflix","Netflix extra","Netflix genérico","HBO HD","HBO 4K","HBO PLATINO","Disney 4K","Disney HD","PRIME","Paramount","VIX","Crunchyroll","Spotify","Spotify 3","ChatGPT gen","ChatGPT+","Office","Office3","Office12","Canva1","Canva12","APPLE ONE","Apple TV","Youtubep1","Youtubep3","ARES1","ARES2","ARES12","IPTVLAT1","IPTVLAT3"];
-
-// ─── UTILIDADES ───────────────────────────────────────────
-const hoy = new Date(); hoy.setHours(0,0,0,0);
-
-function diasDesdeFecha(f) {
-  if (!f) return null;
-  f = f.trim();
-  let d,m,y;
-  if (f.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
-    const p = f.split("/");
-    if (Number(p[1])>12){m=p[0];d=p[1];y=p[2];}else{d=p[0];m=p[1];y=p[2];}
-  } else if (f.match(/^\d{4}-\d{2}-\d{2}$/)){[y,m,d]=f.split("-");}
-  else return null;
-  const fecha=new Date(Number(y),Number(m)-1,Number(d));fecha.setHours(0,0,0,0);
-  return Math.ceil((fecha-hoy)/86400000);
-}
-
-function parseFecha(f) {
-  if (!f) return "—"; f=f.trim();
-  if (f.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)){
-    const p=f.split("/");
-    if(Number(p[1])>12)return`${String(p[1]).padStart(2,'0')}/${String(p[0]).padStart(2,'0')}/${p[2]}`;
-    return f;
+const CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;600;800;900&display=swap');
+  
+  :root {
+    --bg:       #030712;
+    --bg1:      #0a0f1e;
+    --bg2:      #0f1629;
+    --bg3:      #141d35;
+    --border:   #1e2d4a;
+    --border2:  #243560;
+    --text:     #e2e8f0;
+    --text2:    #7b90b8;
+    --text3:    #3d5175;
+    --cyan:     #00d4ff;
+    --green:    #00ff88;
+    --orange:   #ff8c00;
+    --red:      #ff3366;
+    --purple:   #9d4edd;
+    --yellow:   #ffd60a;
+    --font:     'Outfit', sans-serif;
+    --mono:     'JetBrains Mono', monospace;
   }
-  return f;
-}
 
-function sumarMeses(fechaStr,meses){
-  const [d,m,y]=fechaStr.split("/").map(Number);
-  const b=new Date(y,m-1,d);b.setMonth(b.getMonth()+meses);
-  return`${String(b.getDate()).padStart(2,'0')}/${String(b.getMonth()+1).padStart(2,'0')}/${b.getFullYear()}`;
-}
-
-function fechaHoyStr(){
-  return`${String(hoy.getDate()).padStart(2,'0')}/${String(hoy.getMonth()+1).padStart(2,'0')}/${hoy.getFullYear()}`;
-}
-
-// Convierte DD/MM/YYYY → YYYY-MM-DD para input[type=date]
-function toInputDate(f){
-  if(!f||!f.match(/^\d{2}\/\d{2}\/\d{4}$/))return "";
-  const[d,m,y]=f.split("/");return`${y}-${m}-${d}`;
-}
-// Convierte YYYY-MM-DD → DD/MM/YYYY
-function fromInputDate(f){
-  if(!f)return "";
-  const[y,m,d]=f.split("-");return`${d}/${m}/${y}`;
-}
-// Calcula fecha sumando meses desde hoy
-function fechaDesdeHoyMas(meses){
-  const b=new Date(hoy);b.setMonth(b.getMonth()+meses);
-  return`${String(b.getDate()).padStart(2,'0')}/${String(b.getMonth()+1).padStart(2,'0')}/${b.getFullYear()}`;
-}
-
-function urgencia(d){
-  if(d===null)return{color:"#64748b",bg:"#1e293b"};
-  if(d<0)return{color:"#94a3b8",bg:"#1e293b"};
-  if(d===0)return{color:"#f43f5e",bg:"#2d0a14"};
-  if(d<=3)return{color:"#f43f5e",bg:"#2d0a14"};
-  if(d<=7)return{color:"#fb923c",bg:"#2d1200"};
-  if(d<=15)return{color:"#facc15",bg:"#2d2600"};
-  return{color:"#4ade80",bg:"#0a2d14"};
-}
-
-function Badge({d}){
-  const u=urgencia(d);
-  return<span style={{background:u.bg,color:u.color,border:`1px solid ${u.color}55`,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>
-    {d===null?"—":d<0?`${Math.abs(d)}d vencido`:d===0?"¡HOY!":`${d} días`}
-  </span>;
-}
-
-function parseCols(line){
-  const cols=[];let cur="",inQ=false;
-  for(const ch of line){if(ch==='"')inQ=!inQ;else if(ch===","&&!inQ){cols.push(cur.trim().replace(/^"|"$/g,""));cur="";}else cur+=ch;}
-  cols.push(cur.trim().replace(/^"|"$/g,""));return cols;
-}
-
-function parseCSV(text){
-  const lines=text.trim().split("\n");
-  if(lines.length<2)return{rows:[]};
-  let headerIdx=0;
-  for(let i=0;i<Math.min(5,lines.length);i++){if(lines[i].toUpperCase().includes("NOMBRE")){headerIdx=i;break;}}
-  const headers=parseCols(lines[headerIdx]).map(h=>h.toUpperCase());
-  const iN=headers.findIndex(h=>h.includes("NOMBRE"));
-  const iC=headers.findIndex(h=>h.includes("CUENTA")&&!h.includes("CUENTA2"));
-  const iP=headers.findIndex(h=>h.includes("PRECIO"));
-  const iF=headers.findIndex(h=>h.includes("FECHA"));
-  const iNt=headers.findIndex(h=>h.includes("NOTAS"));
-  const iT=headers.findIndex(h=>h.includes("TEL")||h.includes("WHATSAPP")||h.includes("TELEFONO"));
-  const iV=headers.findIndex(h=>h.includes("VINCULADA")||h.includes("ACTUALIZA"));
-  const iAv=headers.findIndex(h=>h.includes("AVISO"));
-  const iCob=headers.findIndex(h=>h.includes("COBRADO"));
-  const mesActual=hoy.getMonth();
-  const mesesNombres=["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
-  const iMesActual=headers.findIndex(h=>h===mesesNombres[mesActual]);
-
-  const rows=lines.slice(headerIdx+1)
-    .map((line,idx)=>({cols:parseCols(line),rowNum:headerIdx+2+idx}))
-    .filter(({cols})=>cols[iN]&&cols[iN].trim())
-    .map(({cols,rowNum})=>{
-      const notas=(cols[iNt]||"").toUpperCase().trim();
-      const cancelado=notas.startsWith("CANCELAR")||notas.startsWith("CANCELADO");
-      const precio=parseFloat((cols[iP]||"0").replace(/[$,"]/g,""))||0;
-      const fechaRaw=(cols[iF]||"").trim();
-      const d=cancelado?null:diasDesdeFecha(fechaRaw);
-      const cobrado=iCob>=0?(cols[iCob]||"").trim():"";
-      const pagoMesActual=iMesActual>=0?(cols[iMesActual]||"").trim().toUpperCase()==="Y":false;
-      return{
-        rowNum,nombre:cols[iN].trim(),cuenta:(cols[iC]||"").trim(),
-        precio,fecha:parseFecha(fechaRaw),fechaRaw,d,
-        notas:(cols[iNt]||"").trim(),
-        tel:iT>=0?(cols[iT]||"").trim():"",
-        vinculada:iV>=0?(cols[iV]||"").trim():"",
-        aviso:iAv>=0?(cols[iAv]||"").trim():"",
-        cobrado,pagoMesActual,
-        colFecha:iF,colCobrado:iCob,cancelado,
-      };
-    }).filter(c=>!c.cancelado);
-  return{rows};
-}
-
-function agruparClientes(lista){
-  const mapa=new Map();
-  for(const c of lista){
-    if(!mapa.has(c.nombre))mapa.set(c.nombre,{nombre:c.nombre,tel:c.tel,servicios:[]});
-    mapa.get(c.nombre).servicios.push(c);
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
   }
-  return Array.from(mapa.values()).map(cl=>{
-    const validos=cl.servicios.filter(s=>s.d!==null);
-    const dMin=validos.length>0?Math.min(...validos.map(s=>s.d)):null;
-    const total=cl.servicios.reduce((s,x)=>s+x.precio,0);
-    const notas=[...new Set(cl.servicios.map(s=>s.notas).filter(Boolean))];
-    const porFecha=new Map();
-    for(const s of cl.servicios){
-      const key=s.fecha||"—";
-      if(!porFecha.has(key))porFecha.set(key,{fecha:s.fecha,d:s.d,servicios:[]});
-      porFecha.get(key).servicios.push(s);
-    }
-    const grupos=Array.from(porFecha.values()).sort((a,b)=>{if(a.d===null)return 1;if(b.d===null)return-1;return a.d-b.d;});
-    const todosCobrados=cl.servicios.every(s=>s.cobrado);
-    const algunCobrado=cl.servicios.some(s=>s.cobrado);
-    return{nombre:cl.nombre,tel:cl.tel,servicios:cl.servicios,grupos,dMin,total,notas,todosCobrados,algunCobrado};
-  }).sort((a,b)=>{if(a.dMin===null)return 1;if(b.dMin===null)return-1;return a.dMin-b.dMin;});
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg1); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; font-family: var(--mono);
+    white-space: nowrap;
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 12px; border-radius: 8px; border: none;
+    font-family: var(--font); font-weight: 600; font-size: 12px;
+    cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--cyan); color: var(--bg); }
+  .btn-ghost   { background: var(--bg2); color: var(--text2); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--border2); color: var(--text); }
+  .btn-danger  { background: transparent; color: var(--red); border: 1px solid #ff336630; }
+  .btn-danger:hover { background: #ff336615; }
+  .btn-success { background: transparent; color: var(--green); border: 1px solid #00ff8830; }
+  .btn-success:hover { background: #00ff8815; }
+  .btn-renew   { background: transparent; color: var(--cyan); border: 1px solid #00d4ff30; }
+  .btn-renew:hover { background: #00d4ff15; }
+
+  input, select {
+    background: var(--bg2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 10px;
+    padding: 10px 14px; font-family: var(--font); font-size: 14px;
+    outline: none; width: 100%; transition: border-color .15s;
+  }
+  input:focus, select:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px #00d4ff15; }
+  input::placeholder { color: var(--text3); }
+
+  label { font-size: 11px; color: var(--text3); font-weight: 700; letter-spacing: .05em; display: block; margin-bottom: 5px; }
+
+  .card {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    transition: border-color .2s;
+  }
+  .card:hover { border-color: var(--border2); }
+  .card-urgent { border-color: #ff336640; background: #0d0308; }
+  .card-warn   { border-color: #ff8c0040; background: #0d0800; }
+
+  .tag {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 6px;
+    font-size: 10px; font-weight: 700;
+    background: var(--bg3); color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .tag-vinc { background: #1a0a3d; color: #b794f4; border-color: #6b46c130; }
+  .tag-cobrado { background: #0a2d14; color: var(--green); border-color: #00ff8830; }
+
+  .pill {
+    padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; cursor: pointer; background: var(--bg2);
+    color: var(--text3); transition: all .15s; white-space: nowrap; flex-shrink: 0;
+  }
+  .pill:hover { border-color: var(--border2); color: var(--text2); }
+  .pill-active { background: var(--cyan); color: var(--bg); border-color: var(--cyan); }
+  .pill-vinc-active { background: #1a0a3d; color: #b794f4; border-color: #6b46c1; }
+
+  .slide-up { animation: slideUp .2s ease; }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  .glow-green { box-shadow: 0 0 20px #00ff8820; }
+  .glow-cyan  { box-shadow: 0 0 20px #00d4ff20; }
+
+  .mono { font-family: var(--mono); }
+
+  .scroll-x { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+  .scroll-x::-webkit-scrollbar { display: none; }
+`
+
+// ─── UTILS ────────────────────────────────────────────────
+const hoy = new Date(); hoy.setHours(0,0,0,0)
+
+function diasRestantes(fecha) {
+  if (!fecha) return null
+  const f = new Date(fecha + 'T00:00:00')
+  f.setHours(0,0,0,0)
+  return Math.ceil((f - hoy) / 86400000)
 }
 
-// ─── APPS SCRIPT ─────────────────────────────────────────
-async function scriptPost(payload){
-  const res=await fetch(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(payload)});
-  if(!res.ok)throw new Error(`Script error ${res.status}`);
-  const json=await res.json();
-  if(!json.ok)throw new Error(json.error||"Error en script");
-  return json;
+function sumarMeses(fecha, meses) {
+  const d = new Date(fecha + 'T00:00:00')
+  d.setMonth(d.getMonth() + meses)
+  return d.toISOString().split('T')[0]
 }
-async function agregarFila(d){await scriptPost({action:"append",nombre:d.nombre,vinculada:d.vinculada||"",cuenta:d.cuenta,precio:d.precio,fecha:d.fecha,notas:d.notas,tel:d.tel});}
-async function renovarServicioSheet(rowNum,nuevaFecha,notas){await scriptPost({action:"renovar",row:rowNum,fecha:nuevaFecha,notas:notas||""});}
-async function eliminarFila(rowNum){await scriptPost({action:"delete",row:rowNum});}
-async function cancelarServicioSheet(rowNum){await scriptPost({action:"cancelar",row:rowNum});}
-async function marcarCobradoSheet(rowNum,colCobrado,fecha){await scriptPost({action:"cobrado",row:rowNum,col:colCobrado,fecha});}
 
-// ─── MODAL CONFIRMAR ──────────────────────────────────────
-function ModalConfirmar({mensaje,detalle,onConfirmar,onCancelar,colorBtn="#ef4444",textoBtn="Confirmar"}){
-  return<div style={{position:"fixed",inset:0,background:"#000000cc",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-    <div style={{background:"#111827",border:"1px solid #1e2640",borderRadius:16,padding:24,width:"100%",maxWidth:340,textAlign:"center"}}>
-      <div style={{fontSize:36,marginBottom:12}}>⚠️</div>
-      <div style={{fontWeight:800,fontSize:16,marginBottom:8}}>{mensaje}</div>
-      {detalle&&<div style={{fontSize:13,color:"#64748b",marginBottom:20,whiteSpace:"pre-line"}}>{detalle}</div>}
-      <div style={{display:"flex",gap:10}}>
-        <button onClick={onCancelar} style={{flex:1,background:"#1e2640",border:"1px solid #2d3548",color:"#94a3b8",borderRadius:10,padding:"11px",fontWeight:700,cursor:"pointer",fontSize:14}}>Cancelar</button>
-        <button onClick={onConfirmar} style={{flex:1,background:colorBtn,border:"none",color:"#fff",borderRadius:10,padding:"11px",fontWeight:700,cursor:"pointer",fontSize:14}}>{textoBtn}</button>
+function fechaHoy() {
+  return hoy.toISOString().split('T')[0]
+}
+
+function formatFecha(iso) {
+  if (!iso) return '—'
+  const [y,m,d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function parseFechaInput(str) {
+  // Acepta DD/MM/YYYY o YYYY-MM-DD
+  if (!str) return ''
+  if (str.includes('/')) {
+    const [d,m,y] = str.split('/')
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`
+  }
+  return str
+}
+
+function BadgeDias({ d }) {
+  if (d === null) return <span className="badge" style={{background:'#0f1629',color:'#3d5175',border:'1px solid #1e2d4a'}}>—</span>
+  if (d < 0)  return <span className="badge" style={{background:'#1a0008',color:'#ff3366',border:'1px solid #ff336630'}}>{Math.abs(d)}d vencido</span>
+  if (d === 0)return <span className="badge" style={{background:'#1a0008',color:'#ff3366',border:'1px solid #ff336650'}}>¡HOY!</span>
+  if (d <= 3) return <span className="badge" style={{background:'#1a0008',color:'#ff6b6b',border:'1px solid #ff336630'}}>{d} días</span>
+  if (d <= 7) return <span className="badge" style={{background:'#1a0800',color:'#ff8c00',border:'1px solid #ff8c0030'}}>{d} días</span>
+  if (d <= 15)return <span className="badge" style={{background:'#1a1500',color:'#ffd60a',border:'1px solid #ffd60a30'}}>{d} días</span>
+  return <span className="badge" style={{background:'#001a0e',color:'#00ff88',border:'1px solid #00ff8830'}}>{d} días</span>
+}
+
+// ─── SELECTOR FECHA ───────────────────────────────────────
+const DURACIONES = [
+  { label: '1 mes', m: 1 },
+  { label: '2 meses', m: 2 },
+  { label: '3 meses', m: 3 },
+  { label: '6 meses', m: 6 },
+  { label: '1 año', m: 12 },
+]
+
+function SelectorFecha({ value, onChange, label = 'FECHA VENC. *' }) {
+  const [durSel, setDurSel] = useState(null)
+
+  function elegirDuracion(m) {
+    setDurSel(m)
+    const d = new Date(hoy)
+    d.setMonth(d.getMonth() + m)
+    onChange(d.toISOString().split('T')[0])
+  }
+
+  function elegirCalendario(v) {
+    setDurSel(null)
+    onChange(v)
+  }
+
+  return (
+    <div>
+      <label>{label}</label>
+      {/* Botones de duración */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {DURACIONES.map(({ label: l, m }) => (
+          <button key={m} type="button" onClick={() => elegirDuracion(m)}
+            className={`pill ${durSel === m ? 'pill-active' : ''}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {/* Date picker nativo */}
+      <input
+        type="date"
+        value={value || ''}
+        onChange={e => elegirCalendario(e.target.value)}
+        style={{ colorScheme: 'dark', fontFamily: 'var(--mono)' }}
+      />
+      {value && (
+        <div style={{ fontSize: 11, color: 'var(--cyan)', marginTop: 5, fontFamily: 'var(--mono)' }}>
+          📅 {formatFecha(value)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── MODAL BASE ───────────────────────────────────────────
+function Modal({ onClose, children, maxWidth = 480 }) {
+  return (
+    <div style={{position:'fixed',inset:0,background:'#000000dd',zIndex:100,display:'flex',alignItems:'flex-end',justifyContent:'center'}}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="slide-up" style={{background:'var(--bg1)',borderRadius:'20px 20px 0 0',padding:24,width:'100%',maxWidth,maxHeight:'92vh',overflowY:'auto',border:'1px solid var(--border)',borderBottom:'none'}}>
+        {children}
       </div>
     </div>
-  </div>;
+  )
 }
 
-// ─── MODAL RENOVAR ────────────────────────────────────────
-function ModalRenovar({servicio,nombreCliente,onRenovar,onCerrar}){
-  const [fechaFinal,setFechaFinal]=useState("");
-  const [notas,setNotas]=useState("");
-  const [guardando,setGuardando]=useState(false);
-  const [guardado,setGuardado]=useState(false);
-  const [error,setError]=useState("");
-
-  async function renovar(){
-    if(!fechaFinal||!/^\d{2}\/\d{2}\/\d{4}$/.test(fechaFinal))return setError("Selecciona una fecha válida");
-    setGuardando(true);setError("");
-    try{await renovarServicioSheet(servicio.rowNum,fechaFinal,notas);setGuardado(true);setTimeout(()=>{onRenovar();onCerrar();},800);}
-    catch(e){setError("Error al actualizar. Intenta de nuevo.");setGuardando(false);}
-  }
-
-  return<div style={{position:"fixed",inset:0,background:"#000000bb",zIndex:150,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-    <div style={{background:"#111827",borderRadius:"20px 20px 0 0",padding:24,width:"100%",maxWidth:500,maxHeight:"90vh",overflowY:"auto"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div><div style={{fontWeight:800,fontSize:16}}>🔄 Renovar</div><div style={{fontSize:12,color:"#64748b"}}>{nombreCliente} · {servicio.cuenta}</div></div>
-        <button onClick={onCerrar} style={{background:"#1e2640",border:"none",color:"#94a3b8",borderRadius:8,padding:"6px 10px",cursor:"pointer"}}>✕</button>
+function ModalConfirm({ mensaje, detalle, onConfirmar, onCancelar, colorBtn = 'var(--red)', textoBtn = 'Confirmar' }) {
+  return (
+    <div style={{position:'fixed',inset:0,background:'#000000dd',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div className="card slide-up" style={{padding:28,maxWidth:340,width:'100%',textAlign:'center'}}>
+        <div style={{fontSize:40,marginBottom:14}}>⚠️</div>
+        <div style={{fontWeight:800,fontSize:17,marginBottom:8}}>{mensaje}</div>
+        {detalle && <div style={{fontSize:13,color:'var(--text2)',marginBottom:24,whiteSpace:'pre-line',lineHeight:1.6}}>{detalle}</div>}
+        <div style={{display:'flex',gap:10}}>
+          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center'}} onClick={onCancelar}>Cancelar</button>
+          <button className="btn" style={{flex:1,justifyContent:'center',background:colorBtn,color:'var(--bg)'}} onClick={onConfirmar}>{textoBtn}</button>
+        </div>
       </div>
-      <div style={{fontSize:11,color:"#64748b",marginBottom:12,fontWeight:600}}>FECHA ACTUAL: {servicio.fecha}</div>
-      <div style={{marginBottom:14}}>
-        <SelectorFecha value={fechaFinal} onChange={setFechaFinal} label="NUEVA FECHA DE VENCIMIENTO"/>
-      </div>
-      <div style={{marginBottom:12}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>NOTAS (opcional)</label>
-        <input value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej: Renovó 3 meses, pagó en efectivo..."
-          style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:"1px solid #2d3548",borderRadius:10,padding:"10px 12px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
-      </div>
-      {error&&<div style={{background:"#2d0a14",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#f43f5e"}}>⚠️ {error}</div>}
-      <button onClick={renovar} disabled={guardando||guardado}
-        style={{width:"100%",background:guardado?"#166534":guardando?"#374151":"linear-gradient(135deg,#6366f1,#a855f7)",color:"#fff",border:"none",borderRadius:10,padding:"13px",fontWeight:700,fontSize:15,cursor:"pointer"}}>
-        {guardado?"✅ Renovado":guardando?"Guardando...":`Renovar → ${fechaFinal||"elige fecha"}`}
-      </button>
     </div>
-  </div>;
-}
-
-// ─── SELECTOR FECHA ──────────────────────────────────────
-const DURACIONES=[{label:"1 mes",m:1},{label:"2 meses",m:2},{label:"3 meses",m:3},{label:"6 meses",m:6},{label:"1 año",m:12}];
-function SelectorFecha({value,onChange,label="FECHA VENC. *"}){
-  const [selDur,setSelDur]=useState(null);
-  function elegirDuracion(m){
-    setSelDur(m);
-    onChange(fechaDesdeHoyMas(m));
-  }
-  function elegirCalendario(v){
-    setSelDur(null);
-    onChange(fromInputDate(v));
-  }
-  return<div>
-    <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>{label}</label>
-    {/* Botones de duración */}
-    <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
-      {DURACIONES.map(({label:l,m})=>(
-        <button key={m} type="button" onClick={()=>elegirDuracion(m)}
-          style={{background:selDur===m?"#6366f1":"#1e2640",color:selDur===m?"#fff":"#94a3b8",border:`1px solid ${selDur===m?"#6366f1":"#2d3548"}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-          {l}
-        </button>
-      ))}
-    </div>
-    {/* Date picker */}
-    <div style={{position:"relative"}}>
-      <input type="date" value={toInputDate(value)} onChange={e=>elegirCalendario(e.target.value)}
-        style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:"1px solid #3b82f644",borderRadius:10,padding:"10px 12px",color:value?"#e2e8f0":"#4b5563",fontSize:14,outline:"none",colorScheme:"dark"}}/>
-      {value&&<div style={{fontSize:11,color:"#a5b4fc",marginTop:4,paddingLeft:2}}>📅 {value}</div>}
-    </div>
-  </div>;
+  )
 }
 
 // ─── BUSCADOR SERVICIO ────────────────────────────────────
-function BuscadorServicio({value,onChange}){
-  const [query,setQuery]=useState(value||"");
-  const [abierto,setAbierto]=useState(false);
-  const filtrados=query.length>0?SERVICIOS_LISTA.filter(s=>s.toLowerCase().includes(query.toLowerCase())):SERVICIOS_LISTA;
-  function sel(s){setQuery(s);onChange(s);setAbierto(false);}
-  return<div style={{position:"relative"}}>
-    <input value={query} onChange={e=>{setQuery(e.target.value);onChange(e.target.value);setAbierto(true);}} onFocus={()=>setAbierto(true)} onBlur={()=>setTimeout(()=>setAbierto(false),150)} placeholder="Busca o escribe un servicio..."
-      style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:"1px solid #2d3548",borderRadius:10,padding:"10px 12px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
-    {abierto&&filtrados.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1e2640",border:"1px solid #2d3548",borderRadius:10,maxHeight:180,overflowY:"auto",zIndex:50,marginTop:4}}>
-      {filtrados.map(s=><div key={s} onMouseDown={()=>sel(s)} style={{padding:"9px 14px",cursor:"pointer",fontSize:13,color:value===s?"#a5b4fc":"#e2e8f0",background:value===s?"#2d3748":"transparent",borderBottom:"1px solid #2d354820"}}>{s}</div>)}
-    </div>}
-  </div>;
+function BuscadorServicio({ value, onChange }) {
+  const [q, setQ] = useState(value || '')
+  const [open, setOpen] = useState(false)
+  const filtered = q ? SERVICIOS.filter(s => s.toLowerCase().includes(q.toLowerCase())) : SERVICIOS
+  function sel(s) { setQ(s); onChange(s); setOpen(false) }
+  return (
+    <div style={{position:'relative'}}>
+      <input value={q} onChange={e=>{setQ(e.target.value);onChange(e.target.value);setOpen(true)}}
+        onFocus={()=>setOpen(true)} onBlur={()=>setTimeout(()=>setOpen(false),150)}
+        placeholder="Busca o escribe un servicio..." />
+      {open && filtered.length > 0 && (
+        <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,maxHeight:180,overflowY:'auto',zIndex:50}}>
+          {filtered.map(s => (
+            <div key={s} onMouseDown={()=>sel(s)}
+              style={{padding:'9px 14px',cursor:'pointer',fontSize:13,color:value===s?'var(--cyan)':'var(--text)',background:value===s?'var(--bg3)':'transparent',borderBottom:'1px solid #1e2d4a20',fontFamily:'var(--mono)'}}>
+              {s}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
-// ─── FORM NUEVO CLIENTE ───────────────────────────────────
-function FormNuevoCliente({onGuardar,onCerrar,clienteExistente}){
-  const [form,setForm]=useState({nombre:clienteExistente||"",vinculada:"",cuenta:"",precio:"",fecha:"",tel:"",notas:""});
-  const [error,setError]=useState("");
-  const [guardando,setGuardando]=useState(false);
-  const [guardado,setGuardado]=useState(false);
-  function set(k,v){setForm(p=>({...p,[k]:v}));setError("");}
+// ─── MODAL NUEVO/AGREGAR SERVICIO ─────────────────────────
+function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId, clientes }) {
+  const [form, setForm] = useState({ nombre: clienteNombre || '', clienteId: clienteId || '', vinculada: '', cuenta: '', precio: '', fecha: '', tel: '', notas: '' })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const set = (k, v) => { setForm(p => ({...p,[k]:v})); setError('') }
 
-  async function guardar(){
-    if(!form.nombre.trim())return setError("El nombre es obligatorio");
-    if(!form.cuenta.trim())return setError("El servicio es obligatorio");
-    if(!form.fecha.trim())return setError("La fecha es obligatoria");
-    if(!/^\d{2}\/\d{2}\/\d{4}$/.test(form.fecha))return setError("Fecha debe ser DD/MM/AAAA");
-    setGuardando(true);setError("");
-    try{await agregarFila({...form,precio:parseFloat(form.precio)||0});setGuardado(true);setTimeout(()=>{onGuardar();onCerrar();},800);}
-    catch(e){setError("Error al guardar. Intenta de nuevo.");setGuardando(false);}
+  async function guardar() {
+    if (!form.nombre.trim() && !clienteId) return setError('El nombre es obligatorio')
+    if (!form.cuenta.trim()) return setError('El servicio es obligatorio')
+    if (!form.fecha.trim()) return setError('La fecha es obligatoria')
+    const fechaISO = form.fecha.includes('/') ? parseFechaInput(form.fecha) : form.fecha
+    if (!fechaISO) return setError('Fecha inválida')
+    setSaving(true); setError('')
+    try {
+      let cId = clienteId
+      if (!cId) {
+        // Buscar cliente existente o crear nuevo
+        const { data: existing } = await supabase.from('clientes').select('id').eq('nombre', form.nombre.trim()).single()
+        if (existing) {
+          cId = existing.id
+        } else {
+          const { data: nuevo, error: e } = await supabase.from('clientes').insert({ nombre: form.nombre.trim(), telefono: form.tel || null }).select().single()
+          if (e) throw e
+          cId = nuevo.id
+        }
+      }
+      const { error: e2 } = await supabase.from('servicios').insert({
+        cliente_id: cId, cuenta: form.cuenta.trim(),
+        vinculada: form.vinculada || null,
+        precio: parseFloat(form.precio) || 0,
+        fecha_vencimiento: fechaISO,
+        notas: form.notas || null,
+        estado: 'PENDIENTE'
+      })
+      if (e2) throw e2
+      onGuardar()
+      onCerrar()
+    } catch(e) { setError('Error al guardar: ' + e.message); setSaving(false) }
   }
 
-  return<div style={{position:"fixed",inset:0,background:"#000000bb",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-    <div style={{background:"#111827",borderRadius:"20px 20px 0 0",padding:24,width:"100%",maxWidth:500,maxHeight:"92vh",overflowY:"auto"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <div style={{fontWeight:800,fontSize:17}}>{clienteExistente?"➕ Agregar servicio":"➕ Nuevo cliente"}</div>
-        <button onClick={onCerrar} style={{background:"#1e2640",border:"none",color:"#94a3b8",borderRadius:8,padding:"6px 10px",cursor:"pointer"}}>✕</button>
+  return (
+    <Modal onClose={onCerrar}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:18}}>{clienteId ? '➕ Agregar servicio' : '➕ Nuevo cliente'}</div>
+          {clienteNombre && <div style={{fontSize:12,color:'var(--text2)',marginTop:2,fontFamily:'var(--mono)'}}>{clienteNombre}</div>}
+        </div>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
       </div>
-      {/* Nombre */}
+
+      {!clienteId && (
+        <div style={{marginBottom:14}}>
+          <label>NOMBRE O WHATSAPP *</label>
+          <input value={form.nombre} onChange={e=>set('nombre',e.target.value)} placeholder="Ej: Juan García o 664 123 4567" />
+        </div>
+      )}
+
       <div style={{marginBottom:14}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>NOMBRE O WHATSAPP *</label>
-        <input value={form.nombre} onChange={e=>set("nombre",e.target.value)} placeholder="Ej: Juan García o 664 123 4567" readOnly={!!clienteExistente}
-          style={{width:"100%",boxSizing:"border-box",background:clienteExistente?"#0f172a":"#1e2640",border:"1px solid #2d3548",borderRadius:10,padding:"10px 12px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
-      </div>
-      {/* Vinculada */}
-      <div style={{marginBottom:14}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>VINCULADA</label>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {VINCULADAS_LISTA.map(v=>(
-            <button key={v} onClick={()=>set("vinculada",form.vinculada===v?"":v)}
-              style={{background:form.vinculada===v?"#6366f1":"#1e2640",color:form.vinculada===v?"#fff":"#94a3b8",border:`1px solid ${form.vinculada===v?"#6366f1":"#2d3548"}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:11,fontWeight:600}}>
-              {v}
-            </button>
+        <label>VINCULADA</label>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+          {VINCULADAS.map(v => (
+            <button key={v} className={`pill ${form.vinculada===v?'pill-vinc-active':''}`}
+              onClick={()=>set('vinculada',form.vinculada===v?'':v)}>{v}</button>
           ))}
         </div>
       </div>
-      {/* Servicio */}
+
       <div style={{marginBottom:14}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>SERVICIO / CUENTA *</label>
-        <BuscadorServicio value={form.cuenta} onChange={v=>set("cuenta",v)}/>
+        <label>SERVICIO / CUENTA *</label>
+        <BuscadorServicio value={form.cuenta} onChange={v=>set('cuenta',v)} />
       </div>
-      {/* Precio */}
+
       <div style={{marginBottom:14}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>PRECIO (MXN)</label>
-        <input value={form.precio} onChange={e=>set("precio",e.target.value)} placeholder="Ej: 95" type="number"
-          style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:"1px solid #2d3548",borderRadius:10,padding:"10px 12px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
+        <label>PRECIO (MXN)</label>
+        <input value={form.precio} onChange={e=>set('precio',e.target.value)} placeholder="95" type="number" style={{fontFamily:'var(--mono)'}} />
       </div>
+
       <div style={{marginBottom:14}}>
-        <SelectorFecha value={form.fecha} onChange={v=>set("fecha",v)}/>
+        <SelectorFecha value={form.fecha} onChange={v=>set('fecha',v)} />
       </div>
-      {/* Tel */}
-      {!clienteExistente&&<div style={{marginBottom:14}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>TELÉFONO WHATSAPP</label>
-        <input value={form.tel} onChange={e=>set("tel",e.target.value)} placeholder="10 dígitos: 6641234567" type="tel"
-          style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:"1px solid #2d3548",borderRadius:10,padding:"10px 12px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
-      </div>}
-      {/* Notas */}
+
+      {!clienteId && (
+        <div style={{marginBottom:14}}>
+          <label>TELÉFONO WHATSAPP</label>
+          <input value={form.tel} onChange={e=>set('tel',e.target.value)} placeholder="6641234567" type="tel" style={{fontFamily:'var(--mono)'}} />
+        </div>
+      )}
+
       <div style={{marginBottom:20}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>NOTAS</label>
-        <input value={form.notas} onChange={e=>set("notas",e.target.value)} placeholder="Ej: Perfil 4, pin 3333 / usuario: juan@mail.com"
-          style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:"1px solid #2d3548",borderRadius:10,padding:"10px 12px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
+        <label>NOTAS</label>
+        <input value={form.notas} onChange={e=>set('notas',e.target.value)} placeholder="Ej: Perfil 4, pin 3333" />
       </div>
-      {error&&<div style={{background:"#2d0a14",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12,color:"#f43f5e"}}>⚠️ {error}</div>}
-      <button onClick={guardar} disabled={guardando||guardado}
-        style={{width:"100%",background:guardado?"#166534":guardando?"#374151":"linear-gradient(135deg,#6366f1,#a855f7)",color:"#fff",border:"none",borderRadius:10,padding:"13px",fontWeight:700,fontSize:15,cursor:"pointer"}}>
-        {guardado?"✅ Guardado":guardando?"Guardando...":"Guardar"}
+
+      {error && <div style={{background:'#1a0008',border:'1px solid #ff336630',borderRadius:8,padding:'8px 12px',marginBottom:14,fontSize:12,color:'var(--red)'}}>⚠️ {error}</div>}
+
+      <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:15}} onClick={guardar} disabled={saving}>
+        {saving ? 'Guardando...' : '✓ Guardar'}
       </button>
-      <div style={{textAlign:"center",fontSize:11,color:"#374151",marginTop:10}}>Se guardará en tu Google Sheet</div>
-    </div>
-  </div>;
+    </Modal>
+  )
 }
 
-async function editarServicioSheet(rowNum,datos){await scriptPost({action:"editar",row:rowNum,...datos});}
+// ─── MODAL RENOVAR ────────────────────────────────────────
+function ModalRenovar({ servicio, cliente, onRenovar, onCerrar }) {
+  const [fecha, setFecha] = useState('')
+  const [notas, setNotas] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function renovar() {
+    if (!fecha) return setError('Selecciona una fecha')
+    setSaving(true); setError('')
+    try {
+      const updates = { fecha_vencimiento: fecha, estado: 'PENDIENTE', cobrado: null }
+      if (notas) updates.notas = servicio.notas ? servicio.notas + ' | ' + notas : notas
+      const { error: e } = await supabase.from('servicios').update(updates).eq('id', servicio.id)
+      if (e) throw e
+      onRenovar(); onCerrar()
+    } catch(e) { setError('Error: ' + e.message); setSaving(false) }
+  }
+
+  return (
+    <Modal onClose={onCerrar}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:17}}>🔄 Renovar servicio</div>
+          <div style={{fontSize:12,color:'var(--text2)',fontFamily:'var(--mono)',marginTop:2}}>{cliente} · {servicio.cuenta}</div>
+        </div>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
+      </div>
+      <div style={{fontSize:11,color:'var(--text3)',marginBottom:14,fontFamily:'var(--mono)'}}>FECHA ACTUAL: {formatFecha(servicio.fecha_vencimiento)}</div>
+      <div style={{marginBottom:14}}>
+        <SelectorFecha value={fecha} onChange={setFecha} label="NUEVA FECHA DE VENCIMIENTO" />
+      </div>
+      <div style={{marginBottom:14}}>
+        <label>NOTAS (opcional)</label>
+        <input value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej: Pagó en efectivo, renovó 3 meses..." />
+      </div>
+      {error && <div style={{color:'var(--red)',fontSize:12,marginBottom:12}}>⚠️ {error}</div>}
+      <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:15}} onClick={renovar} disabled={saving}>
+        {saving ? 'Guardando...' : `Renovar → ${fecha ? formatFecha(fecha) : 'elige fecha'}`}
+      </button>
+    </Modal>
+  )
+}
 
 // ─── MODAL EDITAR SERVICIO ────────────────────────────────
-function ModalEditarServicio({servicio,nombreCliente,onGuardar,onCerrar}){
-  const [form,setForm]=useState({
-    cuenta:servicio.cuenta,
-    vinculada:servicio.vinculada||"",
-    precio:servicio.precio||"",
-    fecha:servicio.fecha&&servicio.fecha!=="—"?servicio.fecha:"",
-    notas:servicio.notas||"",
-  });
-  const [guardando,setGuardando]=useState(false);
-  const [guardado,setGuardado]=useState(false);
-  const [error,setError]=useState("");
-  function set(k,v){setForm(p=>({...p,[k]:v}));setError("");}
+function ModalEditar({ servicio, cliente, onGuardar, onCerrar }) {
+  const [form, setForm] = useState({
+    cuenta: servicio.cuenta || '',
+    vinculada: servicio.vinculada || '',
+    precio: servicio.precio || '',
+    fecha: servicio.fecha_vencimiento || '',
+    notas: servicio.notas || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const set = (k, v) => { setForm(p => ({...p,[k]:v})); setError('') }
 
-  async function guardar(){
-    if(!form.cuenta.trim())return setError("El servicio es obligatorio");
-    if(!form.fecha||!/^\d{2}\/\d{2}\/\d{4}$/.test(form.fecha))return setError("Selecciona una fecha válida");
-    setGuardando(true);setError("");
-    try{
-      await editarServicioSheet(servicio.rowNum,{
-        cuenta:form.cuenta,vinculada:form.vinculada,
-        precio:parseFloat(form.precio)||0,fecha:form.fecha,notas:form.notas,
-      });
-      setGuardado(true);setTimeout(()=>{onGuardar();onCerrar();},800);
-    }catch(e){setError("Error al guardar. Intenta de nuevo.");setGuardando(false);}
+  async function guardar() {
+    if (!form.cuenta.trim()) return setError('El servicio es obligatorio')
+    if (!form.fecha) return setError('Selecciona una fecha válida')
+    setSaving(true); setError('')
+    try {
+      const { error: e } = await supabase.from('servicios').update({
+        cuenta: form.cuenta.trim(),
+        vinculada: form.vinculada || null,
+        precio: parseFloat(form.precio) || 0,
+        fecha_vencimiento: form.fecha,
+        notas: form.notas || null,
+      }).eq('id', servicio.id)
+      if (e) throw e
+      onGuardar(); onCerrar()
+    } catch(e) { setError('Error: ' + e.message); setSaving(false) }
   }
 
-  return<div style={{position:"fixed",inset:0,background:"#000000bb",zIndex:150,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-    <div style={{background:"#111827",borderRadius:"20px 20px 0 0",padding:24,width:"100%",maxWidth:500,maxHeight:"92vh",overflowY:"auto"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+  return (
+    <Modal onClose={onCerrar}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div>
-          <div style={{fontWeight:800,fontSize:16}}>✏️ Editar servicio</div>
-          <div style={{fontSize:12,color:"#64748b"}}>{nombreCliente}</div>
+          <div style={{fontWeight:800,fontSize:18}}>✏️ Editar servicio</div>
+          <div style={{fontSize:12,color:'var(--text2)',fontFamily:'var(--mono)',marginTop:2}}>{cliente}</div>
         </div>
-        <button onClick={onCerrar} style={{background:"#1e2640",border:"none",color:"#94a3b8",borderRadius:8,padding:"6px 10px",cursor:"pointer"}}>✕</button>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
       </div>
-      {/* Vinculada */}
+
       <div style={{marginBottom:14}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>VINCULADA</label>
-        <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-          {VINCULADAS_LISTA.map(v=>(
-            <button key={v} type="button" onClick={()=>set("vinculada",form.vinculada===v?"":v)}
-              style={{background:form.vinculada===v?"#6366f1":"#1e2640",color:form.vinculada===v?"#fff":"#94a3b8",border:`1px solid ${form.vinculada===v?"#6366f1":"#2d3548"}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:11,fontWeight:600}}>
-              {v}
-            </button>
+        <label>VINCULADA</label>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+          {VINCULADAS.map(v => (
+            <button key={v} className={`pill ${form.vinculada===v?'pill-vinc-active':''}`}
+              onClick={()=>set('vinculada',form.vinculada===v?'':v)}>{v}</button>
           ))}
         </div>
       </div>
-      {/* Servicio */}
+
       <div style={{marginBottom:14}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>SERVICIO / CUENTA</label>
-        <BuscadorServicio value={form.cuenta} onChange={v=>set("cuenta",v)}/>
+        <label>SERVICIO / CUENTA</label>
+        <BuscadorServicio value={form.cuenta} onChange={v=>set('cuenta',v)} />
       </div>
-      {/* Precio */}
+
       <div style={{marginBottom:14}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>PRECIO (MXN)</label>
-        <input value={form.precio} onChange={e=>set("precio",e.target.value)} type="number" placeholder="Ej: 95"
-          style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:"1px solid #2d3548",borderRadius:10,padding:"10px 12px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
+        <label>PRECIO (MXN)</label>
+        <input value={form.precio} onChange={e=>set('precio',e.target.value)} type="number" placeholder="95" style={{fontFamily:'var(--mono)'}} />
       </div>
-      {/* Fecha con selector */}
+
       <div style={{marginBottom:14}}>
-        <SelectorFecha value={form.fecha} onChange={v=>set("fecha",v)} label="FECHA VENCIMIENTO"/>
+        <SelectorFecha value={form.fecha} onChange={v=>set('fecha',v)} label="FECHA VENCIMIENTO" />
       </div>
-      {/* Notas */}
+
       <div style={{marginBottom:20}}>
-        <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:5}}>NOTAS</label>
-        <input value={form.notas} onChange={e=>set("notas",e.target.value)} placeholder="Ej: Perfil 2, pin 1234"
-          style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:"1px solid #2d3548",borderRadius:10,padding:"10px 12px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
+        <label>NOTAS</label>
+        <input value={form.notas} onChange={e=>set('notas',e.target.value)} placeholder="Ej: Perfil 2, pin 1234" />
       </div>
-      {error&&<div style={{background:"#2d0a14",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12,color:"#f43f5e"}}>⚠️ {error}</div>}
-      <button onClick={guardar} disabled={guardando||guardado}
-        style={{width:"100%",background:guardado?"#166534":guardando?"#374151":"linear-gradient(135deg,#6366f1,#a855f7)",color:"#fff",border:"none",borderRadius:10,padding:"13px",fontWeight:700,fontSize:15,cursor:"pointer"}}>
-        {guardado?"✅ Guardado":guardando?"Guardando...":"Guardar cambios"}
+
+      {error && <div style={{background:'#1a0008',border:'1px solid #ff336630',borderRadius:8,padding:'8px 12px',marginBottom:14,fontSize:12,color:'var(--red)'}}>⚠️ {error}</div>}
+
+      <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:15}} onClick={guardar} disabled={saving}>
+        {saving ? 'Guardando...' : '✓ Guardar cambios'}
       </button>
-    </div>
-  </div>;
+    </Modal>
+  )
 }
 
 // ─── LOGIN ────────────────────────────────────────────────
-function Login({onLogin}){
-  const [usuario,setUsuario]=useState("");
-  const [pass,setPass]=useState("");
-  const [verPass,setVerPass]=useState(false);
-  const [error,setError]=useState("");
-  const [loading,setLoading]=useState(false);
+function Login({ onLogin }) {
+  const [usuario, setUsuario] = useState('')
+  const [pass, setPass] = useState('')
+  const [verPass, setVerPass] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  function intentarLogin(){
-    setLoading(true);setError("");
-    setTimeout(()=>{
-      const u=USUARIOS[usuario.trim()];
-      if(u&&u.pass===pass){onLogin({usuario:usuario.trim(),rol:u.rol});}
-      else{setError("Usuario o contraseña incorrectos");setLoading(false);}
-    },600);
+  async function login() {
+    setLoading(true); setError('')
+    const { data, error: e } = await supabase.from('usuarios')
+      .select('*').eq('username', usuario.trim()).eq('password_hash', pass).single()
+    if (e || !data) { setError('Usuario o contraseña incorrectos'); setLoading(false); return }
+    onLogin({ usuario: data.username, rol: data.rol })
   }
 
-  return<div style={{minHeight:"100vh",background:"#0b0f1a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif",padding:16}}>
-    <div style={{width:"100%",maxWidth:360}}>
-      <div style={{textAlign:"center",marginBottom:32}}>
-        <div style={{width:64,height:64,borderRadius:18,background:"linear-gradient(135deg,#6366f1,#a855f7)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:38,marginBottom:12,boxShadow:"0 0 40px #6366f155"}}>👾</div>
-        <div style={{fontWeight:800,fontSize:22,color:"#e2e8f0"}}>👾 Streaming</div>
-        <div style={{fontSize:13,color:"#4b5563",marginTop:4}}>Inicia sesión para continuar</div>
-      </div>
-      <div style={{background:"#111827",border:"1px solid #1e2640",borderRadius:16,padding:24}}>
-        <div style={{marginBottom:16}}>
-          <label style={{fontSize:12,color:"#64748b",fontWeight:600,display:"block",marginBottom:6}}>USUARIO</label>
-          <input value={usuario} onChange={e=>{setUsuario(e.target.value);setError("");}} onKeyDown={e=>e.key==="Enter"&&intentarLogin()} placeholder="Admin / Angelica"
-            style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:`1px solid ${error?"#f43f5e55":"#2d3548"}`,borderRadius:10,padding:"11px 14px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
+  return (
+    <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:'var(--font)'}}>
+      <style>{CSS}</style>
+      <div style={{width:'100%',maxWidth:380}}>
+        {/* Logo */}
+        <div style={{textAlign:'center',marginBottom:40}}>
+          <div style={{width:72,height:72,borderRadius:20,background:'linear-gradient(135deg,#00d4ff20,#9d4edd20)',border:'1px solid var(--cyan)',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:36,marginBottom:16,boxShadow:'0 0 40px #00d4ff20'}}>👾</div>
+          <div style={{fontWeight:900,fontSize:28,letterSpacing:'-0.02em'}}>Streaming</div>
+          <div style={{fontSize:13,color:'var(--text3)',marginTop:4,fontFamily:'var(--mono)'}}>Panel de control</div>
         </div>
-        <div style={{marginBottom:20}}>
-          <label style={{fontSize:12,color:"#64748b",fontWeight:600,display:"block",marginBottom:6}}>CONTRASEÑA</label>
-          <div style={{position:"relative"}}>
-            <input type={verPass?"text":"password"} value={pass} onChange={e=>{setPass(e.target.value);setError("");}} onKeyDown={e=>e.key==="Enter"&&intentarLogin()} placeholder="••••••••"
-              style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:`1px solid ${error?"#f43f5e55":"#2d3548"}`,borderRadius:10,padding:"11px 40px 11px 14px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
-            <button onClick={()=>setVerPass(!verPass)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#4b5563",fontSize:16}}>
-              {verPass?"🙈":"👁️"}
+
+        <div className="card" style={{padding:28}}>
+          <div style={{marginBottom:18}}>
+            <label>USUARIO</label>
+            <input value={usuario} onChange={e=>{setUsuario(e.target.value);setError('')}}
+              onKeyDown={e=>e.key==='Enter'&&login()} placeholder="Admin / Angelica" />
+          </div>
+          <div style={{marginBottom:24,position:'relative'}}>
+            <label>CONTRASEÑA</label>
+            <input type={verPass?'text':'password'} value={pass} onChange={e=>{setPass(e.target.value);setError('')}}
+              onKeyDown={e=>e.key==='Enter'&&login()} placeholder="••••••••" style={{paddingRight:44}} />
+            <button onClick={()=>setVerPass(!verPass)} style={{position:'absolute',right:12,bottom:10,background:'none',border:'none',cursor:'pointer',color:'var(--text3)',fontSize:16}}>
+              {verPass?'🙈':'👁️'}
             </button>
           </div>
+          {error && <div style={{background:'#1a0008',border:'1px solid #ff336630',borderRadius:8,padding:'8px 12px',marginBottom:16,fontSize:12,color:'var(--red)',textAlign:'center'}}>⚠️ {error}</div>}
+          <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:15}} onClick={login} disabled={loading||!usuario||!pass}>
+            {loading ? 'Verificando...' : 'Entrar →'}
+          </button>
         </div>
-        {error&&<div style={{background:"#2d0a14",border:"1px solid #f43f5e33",borderRadius:8,padding:"8px 12px",marginBottom:16,fontSize:12,color:"#f43f5e",textAlign:"center"}}>⚠️ {error}</div>}
-        <button onClick={intentarLogin} disabled={loading||!usuario||!pass}
-          style={{width:"100%",background:loading||!usuario||!pass?"#1e2640":"linear-gradient(135deg,#6366f1,#a855f7)",color:loading||!usuario||!pass?"#4b5563":"#fff",border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:15,cursor:loading||!usuario||!pass?"not-allowed":"pointer"}}>
-          {loading?"Verificando...":"Entrar →"}
-        </button>
       </div>
     </div>
-  </div>;
+  )
 }
 
 // ─── APP PRINCIPAL ────────────────────────────────────────
-const FILTROS=[
-  {val:"todos",label:"Todos"},
-  {val:"vencidos",label:"💀 Vencidos"},
-  {val:"hoy",label:"🔴 Hoy"},
-  {val:"3dias",label:"🔴 3 días"},
-  {val:"semana",label:"🟠 7 días"},
-  {val:"mes",label:"🟡 30 días"},
-];
+const FILTROS = [
+  {val:'todos',label:'Todos'},
+  {val:'vencidos',label:'💀 Vencidos'},
+  {val:'hoy',label:'🔴 Hoy'},
+  {val:'3dias',label:'🔴 3d'},
+  {val:'semana',label:'🟠 7d'},
+  {val:'mes',label:'🟡 30d'},
+]
 
-const ORDEN_OPTS=[
-  {val:"fecha",label:"📅 Fecha"},
-  {val:"nombre",label:"🔤 Nombre"},
-  {val:"precio",label:"💰 Precio"},
-];
+function App({ sesion, onLogout }) {
+  const [data, setData] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [buscar, setBuscar] = useState('')
+  const [filtro, setFiltro] = useState('todos')
+  const [filtroVinc, setFiltroVinc] = useState('')
+  const [orden, setOrden] = useState('fecha')
+  const [verRes, setVerRes] = useState(false)
+  const [ultimaAct, setUltimaAct] = useState(null)
+  const [modalForm, setModalForm] = useState(null)
+  const [modalRenovar, setModalRenovar] = useState(null)
+  const [modalEditar, setModalEditar] = useState(null)
+  const [modalConfirm, setModalConfirm] = useState(null)
+  const [notif, setNotif] = useState({})
+  const [vista, setVista] = useState('cobros') // 'cobros' | 'cuentas'
+  const esAdmin = sesion.rol === 'admin'
 
-function AppPrincipal({sesion,onLogout}){
-  const [rawData,setRawData]=useState([]);
-  const [cargando,setCargando]=useState(true);
-  const [error,setError]=useState(null);
-  const [buscar,setBuscar]=useState("");
-  const [filtro,setFiltro]=useState("todos");
-  const [orden,setOrden]=useState("fecha");
-  const [filtroVinc,setFiltroVinc]=useState("");
-  const [notif,setNotif]=useState({});
-  const [verRes,setVerRes]=useState(false);
-  const [ultimaAct,setUltimaAct]=useState(null);
-  const [mostrarForm,setMostrarForm]=useState(false);
-  const [clienteParaServicio,setClienteParaServicio]=useState(null);
-  const [modalRenovar,setModalRenovar]=useState(null);
-  const [modalEditar,setModalEditar]=useState(null);
-  const [modalConfirm,setModalConfirm]=useState(null);
-  const esAdmin=sesion.rol==="admin";
+  const cargarDatos = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const { data: serviciosData, error: e } = await supabase
+        .from('servicios')
+        .select('*, clientes(id, nombre, telefono)')
+        .eq('cancelado', false)
+        .order('fecha_vencimiento', { ascending: true })
+      if (e) throw e
 
-  async function cargarDatos(){
-    setCargando(true);setError(null);
-    try{
-      const res=await fetch(SHEET_CSV+"&t="+Date.now());
-      if(!res.ok)throw new Error(`Error ${res.status}`);
-      const text=await res.text();
-      const{rows}=parseCSV(text);
-      if(rows.length===0)throw new Error("No se encontraron clientes");
-      setRawData(rows);setUltimaAct(new Date());
-    }catch(e){setError(e.message);}
-    finally{setCargando(false);}
-  }
-
-  useEffect(()=>{cargarDatos();},[]);
-
-  const clientes=useMemo(()=>agruparClientes(rawData),[rawData]);
-
-  const clientesFiltrados=useMemo(()=>{
-    const q=buscar.toLowerCase();
-    let lista=clientes.filter(c=>{
-      const matchBuscar=!q||c.nombre.toLowerCase().includes(q)||c.servicios.some(s=>s.cuenta.toLowerCase().includes(q))||c.servicios.some(s=>s.vinculada&&s.vinculada.toLowerCase().includes(q));
-      const matchVinc=!filtroVinc||c.servicios.some(s=>s.vinculada===filtroVinc);
-      const ok=matchBuscar&&matchVinc;
-      if(filtro==="vencidos")return ok&&c.dMin!==null&&c.dMin<0;
-      if(filtro==="hoy")return ok&&c.dMin===0;
-      if(filtro==="3dias")return ok&&c.dMin!==null&&c.dMin>=0&&c.dMin<=3;
-      if(filtro==="semana")return ok&&c.dMin!==null&&c.dMin>=0&&c.dMin<=7;
-      if(filtro==="mes")return ok&&c.dMin!==null&&c.dMin>=0&&c.dMin<=30;
-      return ok;
-    });
-    if(orden==="nombre")lista=[...lista].sort((a,b)=>a.nombre.localeCompare(b.nombre));
-    else if(orden==="precio")lista=[...lista].sort((a,b)=>b.total-a.total);
-    return lista;
-  },[clientes,buscar,filtro,filtroVinc,orden]);
-
-  function notificarGrupo(nombre,tel,grupo){
-    const key=`${nombre}__${grupo.fecha}`;
-    const lineas=grupo.servicios.map(s=>{
-      const vinc=s.vinculada?` (${s.vinculada})`:"";
-      const nota=s.notas?`\n  📝 ${s.notas}`:"";
-      return`• ${s.cuenta}${vinc}: $${s.precio} MXN${nota}`;
-    }).join("\n");
-    const total=grupo.servicios.reduce((s,x)=>s+x.precio,0);
-    const diasTxt=grupo.d===0?"¡HOY!":grupo.d!==null?`en ${grupo.d} días`:"próximamente";
-    const txt=`Hola! Te recuerdo el pago de *${nombre}* (${diasTxt}):\n${lineas}\n\n*Total: $${total} MXN*\nFecha: *${grupo.fecha}*`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`,"_blank");
-    setNotif(prev=>({...prev,[key]:true}));
-    setTimeout(()=>setNotif(prev=>{const n={...prev};delete n[key];return n;}),3000);
-  }
-
-  function pedirCancelarServicio(s,nombreCliente){
-    setModalConfirm({
-      mensaje:"¿Cancelar servicio?",
-      detalle:`${nombreCliente} · ${s.cuenta}\nSe marcará como CANCELADO.`,
-      colorBtn:"#fb923c",textoBtn:"Cancelar servicio",
-      onConfirmar:async()=>{
-        try{await cancelarServicioSheet(s.rowNum);await cargarDatos();}
-        catch(e){alert("Error al cancelar.");}
-        setModalConfirm(null);
+      // Agrupar por cliente
+      const mapa = new Map()
+      for (const s of serviciosData) {
+        const c = s.clientes
+        if (!c) continue
+        if (!mapa.has(c.id)) mapa.set(c.id, { cliente: c, servicios: [] })
+        mapa.get(c.id).servicios.push({ ...s, d: diasRestantes(s.fecha_vencimiento) })
       }
-    });
+
+      const lista = Array.from(mapa.values()).map(({ cliente, servicios }) => {
+        const validos = servicios.filter(s => s.d !== null)
+        const dMin = validos.length > 0 ? Math.min(...validos.map(s => s.d)) : null
+        const total = servicios.reduce((sum, s) => sum + (parseFloat(s.precio) || 0), 0)
+        // Agrupar por fecha
+        const porFecha = new Map()
+        for (const s of servicios) {
+          const k = s.fecha_vencimiento || '—'
+          if (!porFecha.has(k)) porFecha.set(k, { fecha: s.fecha_vencimiento, d: s.d, servicios: [] })
+          porFecha.get(k).servicios.push(s)
+        }
+        const grupos = Array.from(porFecha.values()).sort((a,b)=>{
+          if(a.d===null)return 1;if(b.d===null)return-1;return a.d-b.d
+        })
+        return { cliente, servicios, grupos, dMin, total }
+      })
+
+      setData(lista)
+      setUltimaAct(new Date())
+    } catch(e) { setError(e.message) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { cargarDatos() }, [cargarDatos])
+
+  const filtrados = useMemo(() => {
+    const q = buscar.toLowerCase()
+    let lista = data.filter(({ cliente, servicios, dMin }) => {
+      const matchQ = !q ||
+        cliente.nombre.toLowerCase().includes(q) ||
+        servicios.some(s => s.cuenta.toLowerCase().includes(q)) ||
+        servicios.some(s => s.vinculada && s.vinculada.toLowerCase().includes(q))
+      const matchV = !filtroVinc || servicios.some(s => s.vinculada === filtroVinc)
+      const ok = matchQ && matchV
+      if (filtro === 'vencidos') return ok && dMin !== null && dMin < 0
+      if (filtro === 'hoy')      return ok && dMin === 0
+      if (filtro === '3dias')    return ok && dMin !== null && dMin >= 0 && dMin <= 3
+      if (filtro === 'semana')   return ok && dMin !== null && dMin >= 0 && dMin <= 7
+      if (filtro === 'mes')      return ok && dMin !== null && dMin >= 0 && dMin <= 30
+      return ok
+    })
+    if (orden === 'nombre') lista = [...lista].sort((a,b) => a.cliente.nombre.localeCompare(b.cliente.nombre))
+    if (orden === 'precio') lista = [...lista].sort((a,b) => b.total - a.total)
+    return lista
+  }, [data, buscar, filtro, filtroVinc, orden])
+
+  function avisar(cliente, grupo) {
+    const key = `${cliente.id}__${grupo.fecha}`
+    const lineas = grupo.servicios.map(s => {
+      const v = s.vinculada ? ` (${s.vinculada})` : ''
+      const n = s.notas ? `\n  📝 ${s.notas}` : ''
+      return `• ${s.cuenta}${v}: $${parseFloat(s.precio).toLocaleString()} MXN${n}`
+    }).join('\n')
+    const total = grupo.servicios.reduce((sum,s) => sum + parseFloat(s.precio||0), 0)
+    const d = grupo.d
+    const diasTxt = d===0?'¡HOY!':d!==null?`en ${d} días`:'próximamente'
+    const txt = `Hola! Te recuerdo el pago de *${cliente.nombre}* (${diasTxt}):\n${lineas}\n\n*Total: $${total.toLocaleString()} MXN*\nFecha: *${formatFecha(grupo.fecha)}*`
+    window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank')
+    setNotif(p => ({...p, [key]: true}))
+    setTimeout(() => setNotif(p => {const n={...p};delete n[key];return n}), 3000)
   }
 
-  function pedirEliminarServicio(s,nombreCliente){
-    setModalConfirm({
-      mensaje:"¿Eliminar servicio?",
-      detalle:`${nombreCliente} · ${s.cuenta}\nEsta acción no se puede deshacer.`,
-      colorBtn:"#ef4444",textoBtn:"Eliminar",
-      onConfirmar:async()=>{
-        try{await eliminarFila(s.rowNum);await cargarDatos();}
-        catch(e){alert("Error al eliminar.");}
-        setModalConfirm(null);
-      }
-    });
+  async function marcarCobrado(s) {
+    const { error: e } = await supabase.from('servicios').update({ cobrado: fechaHoy() }).eq('id', s.id)
+    if (!e) cargarDatos()
   }
 
-  function pedirEliminarCliente(nombreCliente,servicios){
-    setModalConfirm({
-      mensaje:"¿Eliminar cliente completo?",
-      detalle:`Se eliminarán TODOS los servicios de ${nombreCliente}.`,
-      colorBtn:"#ef4444",textoBtn:"Eliminar todo",
-      onConfirmar:async()=>{
-        try{
-          const rows=[...servicios].sort((a,b)=>b.rowNum-a.rowNum);
-          for(const s of rows)await eliminarFila(s.rowNum);
-          await cargarDatos();
-        }catch(e){alert("Error al eliminar.");}
-        setModalConfirm(null);
-      }
-    });
+  async function cancelar(s) {
+    const notas = s.notas ? 'CANCELADO | ' + s.notas : 'CANCELADO'
+    const { error: e } = await supabase.from('servicios').update({ notas }).eq('id', s.id)
+    if (!e) cargarDatos()
   }
 
-  function pedirMarcarCobrado(s,nombreCliente){
-    setModalConfirm({
-      mensaje:"¿Marcar como cobrado?",
-      detalle:`${nombreCliente} · ${s.cuenta}\nSe registrará la fecha de hoy.`,
-      colorBtn:"#16a34a",textoBtn:"✅ Cobrado",
-      onConfirmar:async()=>{
-        try{await marcarCobradoSheet(s.rowNum,s.colCobrado,fechaHoyStr());await cargarDatos();}
-        catch(e){alert("Error al marcar cobrado.");}
-        setModalConfirm(null);
-      }
-    });
+  async function eliminarServicio(s) {
+    const { error: e } = await supabase.from('servicios').delete().eq('id', s.id)
+    if (!e) cargarDatos()
   }
 
-  // Resumen
-  const totalMes=clientes.reduce((s,c)=>s+c.total,0);
-  const urgentes=clientes.filter(c=>c.dMin!==null&&c.dMin>=0&&c.dMin<=7);
-  const totalUrg=urgentes.reduce((s,c)=>s+c.total,0);
-  const urgentes3=clientes.filter(c=>c.dMin!==null&&c.dMin>=0&&c.dMin<=3).length;
-  const urgentes7=urgentes.length;
+  async function eliminarCliente(clienteId, serviciosIds) {
+    await supabase.from('servicios').delete().in('id', serviciosIds)
+    await supabase.from('clientes').delete().eq('id', clienteId)
+    cargarDatos()
+  }
 
-  // Resumen por vinculada
-  const resumenVinc=useMemo(()=>{
-    const m=new Map();
-    clientes.forEach(c=>c.servicios.forEach(s=>{
-      const k=s.vinculada||"Sin vinculada";
-      if(!m.has(k))m.set(k,{total:0,count:0});
-      m.get(k).total+=s.precio;m.get(k).count+=1;
-    }));
-    return Array.from(m.entries()).sort((a,b)=>b[1].total-a[1].total);
-  },[clientes]);
+  // Stats
+  const totalMes = data.reduce((s,c) => s + c.total, 0)
+  const urgentes7 = data.filter(c => c.dMin !== null && c.dMin >= 0 && c.dMin <= 7)
+  const totalUrg = urgentes7.reduce((s,c) => s + c.total, 0)
+  const urgentes3 = data.filter(c => c.dMin !== null && c.dMin >= 0 && c.dMin <= 3).length
 
-  // Resumen por tipo de servicio
-  const resumenServicio=useMemo(()=>{
-    const m=new Map();
-    clientes.forEach(c=>c.servicios.forEach(s=>{
-      const base=s.cuenta.replace(/\s*(4K|HD|extra|gen|genérico|\+|3|1|12|platino)/gi,"").trim();
-      const k=base||s.cuenta;
-      if(!m.has(k))m.set(k,{total:0,count:0});
-      m.get(k).total+=s.precio;m.get(k).count+=1;
-    }));
-    return Array.from(m.entries()).sort((a,b)=>b[1].total-a[1].total);
-  },[clientes]);
+  const resumenVinc = useMemo(() => {
+    const m = new Map()
+    data.forEach(({ servicios }) => servicios.forEach(s => {
+      const k = s.vinculada || 'Sin vinculada'
+      if (!m.has(k)) m.set(k, { total: 0, count: 0 })
+      m.get(k).total += parseFloat(s.precio||0)
+      m.get(k).count += 1
+    }))
+    return Array.from(m.entries()).sort((a,b) => b[1].total - a[1].total)
+  }, [data])
 
-  return<div style={{minHeight:"100vh",background:"#0b0f1a",fontFamily:"system-ui,sans-serif",color:"#e2e8f0",paddingBottom:40}}>
+  const resumenServicio = useMemo(() => {
+    const m = new Map()
+    data.forEach(({ servicios }) => servicios.forEach(s => {
+      const base = s.cuenta.replace(/\s*(4K|HD|extra|gen|genérico|\+|3|1|12|platino)/gi,'').trim()
+      const k = base || s.cuenta
+      if (!m.has(k)) m.set(k, { total: 0, count: 0 })
+      m.get(k).total += parseFloat(s.precio||0)
+      m.get(k).count += 1
+    }))
+    return Array.from(m.entries()).sort((a,b) => b[1].total - a[1].total)
+  }, [data])
 
-    {mostrarForm&&esAdmin&&<FormNuevoCliente onGuardar={()=>cargarDatos()} onCerrar={()=>setMostrarForm(false)}/>}
-    {clienteParaServicio&&esAdmin&&<FormNuevoCliente clienteExistente={clienteParaServicio} onGuardar={()=>cargarDatos()} onCerrar={()=>setClienteParaServicio(null)}/>}
-    {modalRenovar&&<ModalRenovar servicio={modalRenovar.servicio} nombreCliente={modalRenovar.nombreCliente} onRenovar={()=>cargarDatos()} onCerrar={()=>setModalRenovar(null)}/>}
-    {modalEditar&&<ModalEditarServicio servicio={modalEditar.servicio} nombreCliente={modalEditar.nombreCliente} onGuardar={()=>cargarDatos()} onCerrar={()=>setModalEditar(null)}/>}
-    {modalConfirm&&<ModalConfirmar mensaje={modalConfirm.mensaje} detalle={modalConfirm.detalle} colorBtn={modalConfirm.colorBtn} textoBtn={modalConfirm.textoBtn} onConfirmar={modalConfirm.onConfirmar} onCancelar={()=>setModalConfirm(null)}/>}
+  return (
+    <div style={{minHeight:'100vh',background:'var(--bg)',fontFamily:'var(--font)',paddingBottom:40}}>
+      <style>{CSS}</style>
 
-    {/* Header */}
-    <div style={{background:"linear-gradient(135deg,#0f172a,#1e1b4b)",padding:"20px 16px 14px",borderBottom:"1px solid #1e2640",position:"sticky",top:0,zIndex:10}}>
-      <div style={{maxWidth:500,margin:"0 auto"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#6366f1,#a855f7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>👾</div>
-            <div>
-              <div style={{fontWeight:800,fontSize:15}}>👾 Streaming</div>
-              <div style={{fontSize:11,color:"#4b5563"}}>{sesion.usuario} · <span style={{color:esAdmin?"#a855f7":"#38bdf8"}}>{esAdmin?"Admin":"Ayudante"}</span></div>
-            </div>
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            {esAdmin&&<button onClick={()=>setMostrarForm(true)} style={{background:"linear-gradient(135deg,#6366f1,#a855f7)",border:"none",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700}}>➕ Nuevo</button>}
-            <button onClick={cargarDatos} disabled={cargando} style={{background:"#1e2640",border:"1px solid #2d3548",color:"#94a3b8",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12}}>{cargando?"⏳":"🔄"}</button>
-            <button onClick={onLogout} style={{background:"#1e2640",border:"1px solid #2d3548",color:"#94a3b8",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12}}>🚪</button>
-          </div>
-        </div>
+      {modalForm && <ModalServicio clienteId={modalForm.clienteId} clienteNombre={modalForm.clienteNombre} onGuardar={cargarDatos} onCerrar={()=>setModalForm(null)} />}
+      {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={cargarDatos} onCerrar={()=>setModalRenovar(null)} />}
+      {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={cargarDatos} onCerrar={()=>setModalEditar(null)} />}
+      {modalConfirm && <ModalConfirm {...modalConfirm} onCancelar={()=>setModalConfirm(null)} />}
 
-        {urgentes3>0&&<div style={{fontSize:11,color:"#f43f5e",fontWeight:600,marginBottom:6}}>🔴 {urgentes3} cliente{urgentes3>1?"s":""} en 3 días o menos</div>}
-        {!cargando&&ultimaAct&&urgentes3===0&&<div style={{fontSize:11,color:"#374151",marginBottom:6}}>Actualizado: {ultimaAct.toLocaleTimeString("es-MX")}</div>}
-
-        {/* Resumen solo admin */}
-        {esAdmin&&<div onClick={()=>setVerRes(!verRes)} style={{background:"#0f172a",border:"1px solid #1e2640",borderRadius:10,padding:"10px 14px",marginBottom:10,cursor:"pointer"}}>
-          <div style={{display:"flex",justifyContent:"space-between"}}>
-            <span style={{fontSize:12,color:"#64748b",fontWeight:600}}>💰 Resumen del mes</span>
-            <span style={{fontSize:11,color:"#4b5563"}}>{verRes?"▲":"▼"}</span>
-          </div>
-          {verRes&&<div style={{marginTop:10}}>
-            {/* Totales */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-              <div style={{background:"#1e2640",borderRadius:8,padding:"8px 12px"}}>
-                <div style={{fontSize:10,color:"#64748b",marginBottom:2}}>Total por cobrar</div>
-                <div style={{fontSize:18,fontWeight:800,color:"#4ade80"}}>${totalMes.toLocaleString()}</div>
-                <div style={{fontSize:10,color:"#374151"}}>{clientes.length} clientes</div>
-              </div>
-              <div style={{background:"#2d1200",borderRadius:8,padding:"8px 12px",border:"1px solid #fb923c33"}}>
-                <div style={{fontSize:10,color:"#64748b",marginBottom:2}}>Urgente (7 días)</div>
-                <div style={{fontSize:18,fontWeight:800,color:"#fb923c"}}>${totalUrg.toLocaleString()}</div>
-                <div style={{fontSize:10,color:"#374151"}}>{urgentes7} clientes</div>
+      {/* HEADER */}
+      <div style={{background:'var(--bg1)',borderBottom:'1px solid var(--border)',padding:'16px 16px 12px',position:'sticky',top:0,zIndex:10}}>
+        <div style={{maxWidth:520,margin:'0 auto'}}>
+          {/* Top bar */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <div style={{width:38,height:38,borderRadius:10,background:'var(--bg2)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>👾</div>
+              <div>
+                <div style={{fontWeight:800,fontSize:16,letterSpacing:'-0.01em'}}>Streaming</div>
+                <div style={{fontSize:11,color:'var(--text3)',fontFamily:'var(--mono)'}}>{sesion.usuario} · <span style={{color:esAdmin?'var(--purple)':'var(--cyan)'}}>{esAdmin?'Admin':'Ayudante'}</span></div>
               </div>
             </div>
-            {/* Por vinculada */}
-            <div style={{background:"#0f172a",borderRadius:8,padding:"10px 12px",border:"1px solid #1e2640",marginBottom:8}}>
-              <div style={{fontSize:11,color:"#a5b4fc",fontWeight:700,marginBottom:8}}>🔗 Por vinculada</div>
-              {resumenVinc.map(([nombre,d])=>(
-                <div key={nombre} style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>{nombre}</span>
-                    <span style={{fontSize:10,color:"#374151",background:"#1e2640",borderRadius:4,padding:"1px 5px"}}>{d.count}</span>
-                  </div>
-                  <span style={{fontSize:12,color:"#4ade80",fontWeight:700}}>${d.total.toLocaleString()}</span>
-                </div>
+            <div style={{display:'flex',gap:6}}>
+              {esAdmin && <button className="btn btn-primary" style={{padding:'6px 14px'}} onClick={()=>setModalForm({})}>+ Nuevo</button>}
+              <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={cargarDatos} disabled={loading}>{loading?'⏳':'⟳'}</button>
+              <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onLogout}>⏏</button>
+            </div>
+          </div>
+
+          {/* Tabs — solo admin */}
+          {esAdmin && (
+            <div style={{display:'flex',gap:6,marginBottom:10}}>
+              {[{val:'cobros',label:'💳 Cobros'},{val:'cuentas',label:'🗂️ Cuentas'}].map(t=>(
+                <button key={t.val} onClick={()=>setVista(t.val)} style={{
+                  background:vista===t.val?'var(--accent)':'var(--bg2)',
+                  color:vista===t.val?'#fff':'var(--text3)',
+                  border:`1px solid ${vista===t.val?'var(--accent)':'var(--border)'}`,
+                  borderRadius:8,padding:'6px 14px',cursor:'pointer',fontSize:12,fontWeight:700,
+                  transition:'all 0.15s',
+                }}>{t.label}</button>
               ))}
             </div>
-            {/* Por servicio */}
-            <div style={{background:"#0f172a",borderRadius:8,padding:"10px 12px",border:"1px solid #1e2640"}}>
-              <div style={{fontSize:11,color:"#64748b",fontWeight:700,marginBottom:8}}>📊 Por tipo de servicio</div>
-              {resumenServicio.map(([nombre,d])=>(
-                <div key={nombre} style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>{nombre}</span>
-                    <span style={{fontSize:10,color:"#374151",background:"#1e2640",borderRadius:4,padding:"1px 5px"}}>{d.count}</span>
+          )}
+
+          {/* Alerta */}
+          {vista==='cobros' && urgentes3 > 0 && <div style={{fontSize:11,color:'var(--red)',fontWeight:700,marginBottom:8,fontFamily:'var(--mono)'}}>🔴 {urgentes3} cliente{urgentes3>1?'s':''} · ≤3 días</div>}
+
+          {/* Resumen - solo en cobros */}
+          {vista==='cobros' && esAdmin && (
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,marginBottom:10,overflow:'hidden'}}>
+              <button onClick={()=>setVerRes(!verRes)} style={{width:'100%',background:'none',border:'none',padding:'10px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',color:'var(--text2)'}}>
+                <span style={{fontSize:12,fontWeight:600}}>💰 Resumen del mes</span>
+                <span style={{fontSize:11,fontFamily:'var(--mono)'}}>{verRes?'▲':'▼'}</span>
+              </button>
+              {verRes && (
+                <div style={{padding:'0 14px 14px'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
+                    <div style={{background:'var(--bg3)',borderRadius:10,padding:'10px 14px',border:'1px solid var(--border)'}}>
+                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:4}}>TOTAL POR COBRAR</div>
+                      <div style={{fontSize:22,fontWeight:800,color:'var(--green)',fontFamily:'var(--mono)'}}>${totalMes.toLocaleString()}</div>
+                      <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{data.length} clientes</div>
+                    </div>
+                    <div style={{background:'#1a0800',borderRadius:10,padding:'10px 14px',border:'1px solid #ff8c0030'}}>
+                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:4}}>URGENTE (7 DÍAS)</div>
+                      <div style={{fontSize:22,fontWeight:800,color:'var(--orange)',fontFamily:'var(--mono)'}}>${totalUrg.toLocaleString()}</div>
+                      <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{urgentes7.length} clientes</div>
+                    </div>
                   </div>
-                  <span style={{fontSize:12,color:"#4ade80",fontWeight:700}}>${d.total.toLocaleString()}</span>
+                  {/* Por vinculada */}
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:10,color:'var(--purple)',fontWeight:700,marginBottom:6,fontFamily:'var(--mono)'}}>POR VINCULADA</div>
+                    {resumenVinc.map(([k,v]) => (
+                      <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                          <span style={{fontSize:11,color:'var(--text2)',fontFamily:'var(--mono)'}}>{k}</span>
+                          <span style={{fontSize:9,background:'var(--bg3)',color:'var(--text3)',padding:'1px 5px',borderRadius:4}}>{v.count}</span>
+                        </div>
+                        <span style={{fontSize:12,color:'var(--green)',fontWeight:700,fontFamily:'var(--mono)'}}>${v.total.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Por servicio */}
+                  <div>
+                    <div style={{fontSize:10,color:'var(--cyan)',fontWeight:700,marginBottom:6,fontFamily:'var(--mono)'}}>POR TIPO DE SERVICIO</div>
+                    {resumenServicio.map(([k,v]) => (
+                      <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                          <span style={{fontSize:11,color:'var(--text2)',fontFamily:'var(--mono)'}}>{k}</span>
+                          <span style={{fontSize:9,background:'var(--bg3)',color:'var(--text3)',padding:'1px 5px',borderRadius:4}}>{v.count}</span>
+                        </div>
+                        <span style={{fontSize:12,color:'var(--green)',fontWeight:700,fontFamily:'var(--mono)'}}>${v.total.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
-          </div>}
-        </div>}
+          )}
 
-        {/* Buscador */}
-        <div style={{position:"relative",marginBottom:8}}>
-          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#64748b"}}>🔍</span>
-          <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar nombre, servicio o vinculada..."
-            style={{width:"100%",boxSizing:"border-box",background:"#1e2640",border:"1px solid #2d3548",borderRadius:10,padding:"10px 12px 10px 36px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
-        </div>
-
-        {/* Filtros por vinculada */}
-        <div style={{display:"flex",gap:5,overflowX:"auto",marginBottom:8,paddingBottom:2}}>
-          <button onClick={()=>setFiltroVinc("")} style={{background:filtroVinc===""?"#a855f7":"#1e2640",color:filtroVinc===""?"#fff":"#94a3b8",border:`1px solid ${filtroVinc===""?"#a855f7":"#2d3548"}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:10,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
-            Todas
-          </button>
-          {VINCULADAS_LISTA.map(v=>(
-            <button key={v} onClick={()=>setFiltroVinc(filtroVinc===v?"":v)} style={{background:filtroVinc===v?"#312e81":"#1e2640",color:filtroVinc===v?"#a5b4fc":"#64748b",border:`1px solid ${filtroVinc===v?"#6366f1":"#2d3548"}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:10,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
-              {v}
-            </button>
-          ))}
-        </div>
-
-        {/* Filtros de tiempo + orden */}
-        <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
-          {FILTROS.map(f=>(
-            <button key={f.val} onClick={()=>setFiltro(f.val)} style={{background:filtro===f.val?"#6366f1":"#1e2640",color:filtro===f.val?"#fff":"#94a3b8",border:`1px solid ${filtro===f.val?"#6366f1":"#2d3548"}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:10,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
-              {f.label}
-            </button>
-          ))}
-          <div style={{width:1,background:"#1e2640",flexShrink:0}}/>
-          {ORDEN_OPTS.map(o=>(
-            <button key={o.val} onClick={()=>setOrden(o.val)} style={{background:orden===o.val?"#0f4c75":"#1e2640",color:orden===o.val?"#38bdf8":"#64748b",border:`1px solid ${orden===o.val?"#0ea5e9":"#2d3548"}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:10,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
-              {o.label}
-            </button>
-          ))}
+          {/* Buscador + filtros — solo en cobros */}
+          {vista === 'cobros' && <>
+          <div style={{position:'relative',marginBottom:8}}>
+            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:14}}>⌕</span>
+            <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar nombre, servicio o vinculada..."
+              style={{paddingLeft:34}} />
+          </div>
+          <div className="scroll-x" style={{marginBottom:8}}>
+            <button className={`pill ${filtroVinc===''?'pill-active':''}`} onClick={()=>setFiltroVinc('')}>Todas</button>
+            {VINCULADAS.map(v => (
+              <button key={v} className={`pill ${filtroVinc===v?'pill-vinc-active':''}`} onClick={()=>setFiltroVinc(filtroVinc===v?'':v)}>{v}</button>
+            ))}
+          </div>
+          <div className="scroll-x">
+            {FILTROS.map(f => (
+              <button key={f.val} className={`pill ${filtro===f.val?'pill-active':''}`} onClick={()=>setFiltro(f.val)}>{f.label}</button>
+            ))}
+            <div style={{width:1,background:'var(--border)',flexShrink:0,margin:'0 2px'}}/>
+            {[{val:'fecha',label:'📅'},{val:'nombre',label:'🔤'},{val:'precio',label:'💰'}].map(o => (
+              <button key={o.val} className={`pill ${orden===o.val?'pill-active':''}`} onClick={()=>setOrden(o.val)}>{o.label}</button>
+            ))}
+          </div>
+          </>}
         </div>
       </div>
-    </div>
 
-    {/* Lista */}
-    <div style={{maxWidth:500,margin:"0 auto",padding:"14px 16px 0"}}>
-      {cargando?(
-        <div style={{textAlign:"center",padding:"60px 0",color:"#4b5563"}}>
-          <div style={{fontSize:36,marginBottom:12}}>⏳</div>
-          <div>Cargando datos...</div>
-        </div>
-      ):error?(
-        <div style={{background:"#1a0f00",border:"1px solid #fb923c44",borderRadius:14,padding:24,textAlign:"center"}}>
-          <div style={{fontSize:32,marginBottom:8}}>⚠️</div>
-          <div style={{color:"#fb923c",fontSize:13,marginBottom:16}}>{error}</div>
-          <button onClick={cargarDatos} style={{background:"#6366f1",color:"#fff",border:"none",borderRadius:8,padding:"8px 24px",cursor:"pointer",fontWeight:700}}>Reintentar</button>
-        </div>
-      ):clientesFiltrados.length===0?(
-        <div style={{textAlign:"center",color:"#4b5563",padding:"60px 0"}}>Sin resultados</div>
-      ):clientesFiltrados.map(c=>{
-        const u=urgencia(c.dMin);
-        const urgente=c.dMin!==null&&c.dMin>=0&&c.dMin<=3;
-        const multiGrupo=c.grupos.length>1;
+      {/* Vista Cuentas */}
+      {vista === 'cuentas' && esAdmin && <CuentasView />}
 
-        return<div key={c.nombre} style={{background:urgente?u.bg:"#111827",border:`1px solid ${urgente?u.color+"44":"#1e2640"}`,borderRadius:14,padding:"14px 16px",marginBottom:10}}>
-
-          {/* Header cliente */}
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-            <div style={{fontWeight:800,fontSize:15,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.nombre}</div>
-            {esAdmin&&<span style={{color:"#4ade80",fontWeight:800,fontSize:13,whiteSpace:"nowrap"}}>Total ${c.total.toLocaleString()}</span>}
-            {c.tel&&<a href={`https://wa.me/52${c.tel.replace(/\D/g,"")}`} target="_blank" rel="noreferrer"
-              style={{background:"#14532d",border:"1px solid #16a34a44",color:"#4ade80",borderRadius:8,padding:"4px 8px",fontSize:11,fontWeight:700,textDecoration:"none"}}>📱</a>}
-            {esAdmin&&<button onClick={()=>setClienteParaServicio(c.nombre)} style={{background:"#1e3a5f",border:"1px solid #3b82f644",color:"#93c5fd",borderRadius:8,padding:"4px 8px",cursor:"pointer",fontSize:11,fontWeight:700}}>+</button>}
-            {esAdmin&&<button onClick={()=>pedirEliminarCliente(c.nombre,c.servicios)} style={{background:"#2d0a14",border:"1px solid #f43f5e33",color:"#f43f5e",borderRadius:8,padding:"4px 8px",cursor:"pointer",fontSize:11,fontWeight:700}}>🗑️</button>}
+      {/* LISTA */}
+      {vista === 'cobros' && (
+      <div style={{maxWidth:520,margin:'0 auto',padding:'12px 16px 0'}}>
+        {loading ? (
+          <div style={{textAlign:'center',padding:'60px 0',color:'var(--text3)'}}>
+            <div style={{fontSize:32,marginBottom:8}}>⏳</div>
+            <div style={{fontFamily:'var(--mono)',fontSize:12}}>Cargando...</div>
           </div>
+        ) : error ? (
+          <div className="card" style={{padding:24,textAlign:'center'}}>
+            <div style={{fontSize:32,marginBottom:8}}>⚠️</div>
+            <div style={{color:'var(--orange)',fontSize:13,marginBottom:16}}>{error}</div>
+            <button className="btn btn-primary" onClick={cargarDatos}>Reintentar</button>
+          </div>
+        ) : filtrados.length === 0 ? (
+          <div style={{textAlign:'center',color:'var(--text3)',padding:'60px 0',fontFamily:'var(--mono)',fontSize:12}}>Sin resultados</div>
+        ) : filtrados.map(({ cliente, servicios, grupos, dMin, total }) => {
+          const urgente = dMin !== null && dMin >= 0 && dMin <= 3
+          const vencido = dMin !== null && dMin < 0
+          const cardClass = urgente ? 'card card-urgent' : vencido ? 'card card-urgent' : 'card'
 
-          {/* Notas globales (solo admin) */}
-          {c.notas.length>0&&esAdmin&&<div style={{background:"#1e2640",borderRadius:6,padding:"5px 10px",marginBottom:8,fontSize:11,color:"#94a3b8"}}>📝 {c.notas.join(" · ")}</div>}
-
-          {/* Grupos por fecha */}
-          {c.grupos.map((grupo,gi)=>{
-            const ug=urgencia(grupo.d);
-            const urgGrupo=grupo.d!==null&&grupo.d>=0&&grupo.d<=3;
-            const key=`${c.nombre}__${grupo.fecha}`;
-            const yaNotif=notif[key];
-            return<div key={gi} style={{background:urgGrupo?ug.bg+"99":"#0f172a",border:`1px solid ${multiGrupo?(urgGrupo?ug.color+"33":"#1e2640"):"transparent"}`,borderRadius:multiGrupo?10:0,padding:multiGrupo?"10px 12px":"0",marginBottom:gi<c.grupos.length-1?8:0}}>
-              {/* Fecha + badge + avisar */}
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontSize:11,color:"#64748b"}}>📅 {grupo.fecha}</span>
-                  <Badge d={grupo.d}/>
-                </div>
-                <button onClick={()=>notificarGrupo(c.nombre,c.tel,grupo)} style={{background:yaNotif?"#166534":"#16a34a",color:"#fff",border:"none",borderRadius:8,padding:"4px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700}}>
-                  <span>{yaNotif?"✅":"📲"}</span>
-                  <span style={{fontSize:10}}>{yaNotif?"Enviado":"Avisar"}</span>
-                </button>
+          return (
+            <div key={cliente.id} className={cardClass} style={{marginBottom:10,padding:'12px 14px'}}>
+              {/* Header cliente */}
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                <div style={{fontWeight:800,fontSize:15,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{cliente.nombre}</div>
+                {esAdmin && <span style={{color:'var(--green)',fontWeight:800,fontSize:13,fontFamily:'var(--mono)',whiteSpace:'nowrap'}}>${total.toLocaleString()}</span>}
+                {cliente.telefono && (
+                  <a href={`https://wa.me/52${cliente.telefono.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
+                    className="btn" style={{background:'#001a0e',border:'1px solid #00ff8830',color:'var(--green)',padding:'4px 8px',fontSize:11,textDecoration:'none'}}>📱</a>
+                )}
+                {esAdmin && (
+                  <button className="btn" style={{background:'var(--bg2)',border:'1px solid var(--cyan)',color:'var(--cyan)',padding:'4px 8px',fontSize:11}}
+                    onClick={()=>setModalForm({clienteId:cliente.id,clienteNombre:cliente.nombre})}>+</button>
+                )}
+                {esAdmin && (
+                  <button className="btn btn-danger" style={{padding:'4px 8px',fontSize:11}}
+                    onClick={()=>setModalConfirm({
+                      mensaje:'¿Eliminar cliente?',
+                      detalle:`Se eliminarán todos los servicios de ${cliente.nombre}.`,
+                      textoBtn:'Eliminar todo',
+                      onConfirmar:()=>{eliminarCliente(cliente.id,servicios.map(s=>s.id));setModalConfirm(null)}
+                    })}>🗑️</button>
+                )}
               </div>
-              {/* Servicios */}
-              {grupo.servicios.map((s,si)=>(
-                <div key={si} style={{background:"#0d1424",borderRadius:8,padding:"8px 10px",marginBottom:si<grupo.servicios.length-1?6:0,border:"1px solid #1e2640"}}>
-                  {/* Fila 1: cuenta + vinculada + cobrado + precio */}
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:s.notas&&esAdmin?4:esAdmin?6:0}}>
-                    <span style={{background:"#1e2640",color:"#e2e8f0",fontSize:12,padding:"2px 8px",borderRadius:6,fontWeight:700}}>{s.cuenta}</span>
-                    {s.vinculada&&<span style={{background:"#312e81",color:"#a5b4fc",fontSize:10,padding:"2px 7px",borderRadius:6,fontWeight:600}}>{s.vinculada}</span>}
-                    {s.cobrado&&<span style={{background:"#14532d",color:"#4ade80",fontSize:10,padding:"2px 7px",borderRadius:6,fontWeight:600}}>✅ {s.cobrado}</span>}
-                    {esAdmin&&<span style={{color:"#4ade80",fontSize:12,fontWeight:700,marginLeft:"auto"}}>${s.precio.toLocaleString()}</span>}
+
+              {/* Grupos por fecha */}
+              {grupos.map((grupo, gi) => {
+                const key = `${cliente.id}__${grupo.fecha}`
+                const yaNotif = notif[key]
+                const urgG = grupo.d !== null && grupo.d <= 3
+                return (
+                  <div key={gi} style={{background:'var(--bg2)',borderRadius:10,padding:'8px 10px',marginBottom:gi<grupos.length-1?6:0,border:`1px solid ${urgG?'#ff336620':'var(--border)'}`}}>
+                    {/* Fecha + badge + avisar */}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <span style={{fontSize:11,color:'var(--text3)',fontFamily:'var(--mono)'}}>📅 {formatFecha(grupo.fecha)}</span>
+                        <BadgeDias d={grupo.d} />
+                      </div>
+                      <button className="btn" onClick={()=>avisar(cliente,grupo)}
+                        style={{background:yaNotif?'#001a0e':'#003d1a',border:`1px solid ${yaNotif?'#00ff8850':'#00ff8830'}`,color:'var(--green)',padding:'3px 10px',fontSize:10}}>
+                        {yaNotif?'✅ Enviado':'📲 Avisar'}
+                      </button>
+                    </div>
+                    {/* Servicios */}
+                    {grupo.servicios.map((s, si) => (
+                      <div key={si} style={{background:'var(--bg)',borderRadius:8,padding:'8px 10px',marginBottom:si<grupo.servicios.length-1?5:0,border:'1px solid var(--border)'}}>
+                        {/* Fila 1: cuenta + vinculada + cobrado + precio */}
+                        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:s.notas&&esAdmin?4:esAdmin?5:0}}>
+                          <span style={{fontFamily:'var(--mono)',fontSize:12,fontWeight:700,color:'var(--text)'}}>{s.cuenta}</span>
+                          {s.vinculada && <span className="tag tag-vinc">{s.vinculada}</span>}
+                          {s.cobrado && <span className="tag tag-cobrado">✅ {formatFecha(s.cobrado)}</span>}
+                          {esAdmin && <span style={{color:'var(--green)',fontSize:12,fontWeight:700,fontFamily:'var(--mono)',marginLeft:'auto'}}>${parseFloat(s.precio||0).toLocaleString()}</span>}
+                        </div>
+                        {/* Notas (solo admin) */}
+                        {s.notas && esAdmin && (
+                          <div style={{fontSize:11,color:'var(--text3)',marginBottom:5,paddingLeft:2}}>📝 {s.notas}</div>
+                        )}
+                        {/* Botones admin */}
+                        {esAdmin && (
+                          <div style={{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
+                            {!s.cobrado && (
+                              <button className="btn btn-success" style={{padding:'2px 8px',fontSize:10}}
+                                onClick={()=>setModalConfirm({
+                                  mensaje:'¿Marcar como cobrado?',
+                                  detalle:`${cliente.nombre} · ${s.cuenta}\nSe registra la fecha de hoy.`,
+                                  colorBtn:'var(--green)',textoBtn:'✅ Cobrado',
+                                  onConfirmar:()=>{marcarCobrado(s);setModalConfirm(null)}
+                                })}>✅ Cobrado</button>
+                            )}
+                            <div style={{flex:1}}/>
+                            <button className="btn" style={{padding:'2px 8px',fontSize:10,background:'transparent',color:'var(--cyan)',border:'1px solid #00d4ff30'}}
+                              onClick={()=>setModalEditar({servicio:s,cliente:cliente.nombre})}>✏️</button>
+                            <button className="btn btn-danger" style={{padding:'2px 8px',fontSize:10}}
+                              onClick={()=>setModalConfirm({
+                                mensaje:'¿Cancelar servicio?',
+                                detalle:`${cliente.nombre} · ${s.cuenta}`,
+                                colorBtn:'var(--orange)',textoBtn:'Cancelar',
+                                onConfirmar:()=>{cancelar(s);setModalConfirm(null)}
+                              })}>❌</button>
+                            <button className="btn btn-renew" style={{padding:'2px 8px',fontSize:10}}
+                              onClick={()=>setModalRenovar({servicio:s,cliente:cliente.nombre})}>🔄 Renovar</button>
+                            <button className="btn btn-danger" style={{padding:'2px 8px',fontSize:10}}
+                              onClick={()=>setModalConfirm({
+                                mensaje:'¿Eliminar servicio?',
+                                detalle:`${cliente.nombre} · ${s.cuenta}`,
+                                textoBtn:'Eliminar',
+                                onConfirmar:()=>{eliminarServicio(s);setModalConfirm(null)}
+                              })}>🗑️</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  {/* Notas del servicio (solo admin) */}
-                  {s.notas&&esAdmin&&<div style={{fontSize:11,color:"#64748b",marginBottom:6,paddingLeft:2}}>📝 {s.notas}</div>}
-                  {/* Botones admin */}
-                  {esAdmin&&<div style={{display:"flex",gap:5,alignItems:"center"}}>
-                    {!s.cobrado&&<button onClick={()=>pedirMarcarCobrado(s,c.nombre)} style={{background:"#0f2a0f",border:"1px solid #4ade8033",color:"#4ade80",borderRadius:6,padding:"3px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
-                      ✅ Cobrado
-                    </button>}
-                    <div style={{flex:1}}/>
-                    <button onClick={()=>setModalEditar({servicio:s,nombreCliente:c.nombre})} style={{background:"#1a2d1a",border:"1px solid #4ade8033",color:"#86efac",borderRadius:6,padding:"3px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>✏️</button>
-                    <button onClick={()=>pedirCancelarServicio(s,c.nombre)} style={{background:"#2d1a00",border:"1px solid #fb923c33",color:"#fb923c",borderRadius:6,padding:"3px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>❌ Cancelar</button>
-                    <button onClick={()=>setModalRenovar({servicio:s,nombreCliente:c.nombre})} style={{background:"#1e3a5f",border:"1px solid #3b82f644",color:"#93c5fd",borderRadius:6,padding:"3px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>🔄 Renovar</button>
-                    <button onClick={()=>pedirEliminarServicio(s,c.nombre)} style={{background:"#2d0a14",border:"1px solid #f43f5e33",color:"#f43f5e",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,fontWeight:700}}>🗑️</button>
-                  </div>}
-                </div>
-              ))}
-            </div>;
-          })}
-        </div>;
-      })}
-      {!cargando&&!error&&<div style={{textAlign:"center",fontSize:11,color:"#374151",marginTop:16}}>{clientesFiltrados.length} de {clientes.length} clientes</div>}
+                )
+              })}
+            </div>
+          )
+        })}
+        {!loading && !error && (
+          <div style={{textAlign:'center',fontSize:11,color:'var(--text3)',marginTop:16,fontFamily:'var(--mono)'}}>
+            {filtrados.length} / {data.length} clientes
+          </div>
+        )}
+      </div>
+      )}
     </div>
-  </div>;
+  )
 }
 
-export default function App(){
-  const [sesion,setSesion]=useState(null);
-  if(!sesion)return<Login onLogin={setSesion}/>;
-  return<AppPrincipal sesion={sesion} onLogout={()=>setSesion(null)}/>;
+// ─── CUENTAS VIEW ──────────────────────────────────────────
+function CuentasView() {
+  const [cuentas, setCuentas] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editando, setEditando] = useState(null) // perfil id
+  const [editVal, setEditVal] = useState('')
+  const [buscar, setBuscar] = useState('')
+  const [filtroSvc, setFiltroSvc] = useState('')
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('cuentas_maestras')
+      .select('*, perfiles_espacios(*)')
+      .order('servicio')
+    if (!error) setCuentas(data || [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const serviciosUnicos = [...new Set(cuentas.map(c => c.servicio))].sort()
+
+  const cuentasFiltradas = cuentas.filter(c => {
+    const okSvc = !filtroSvc || c.servicio === filtroSvc
+    const okQ = !buscar || c.servicio.toLowerCase().includes(buscar.toLowerCase()) ||
+      c.vinculada?.toLowerCase().includes(buscar.toLowerCase()) ||
+      c.perfiles_espacios?.some(p => (p.cliente_nombre||'').toLowerCase().includes(buscar.toLowerCase()))
+    return okSvc && okQ
+  })
+
+  async function guardarCliente(perfilId, nuevoCliente) {
+    const val = nuevoCliente.trim() || null
+    await supabase.from('perfiles_espacios').update({
+      cliente_nombre: val,
+      notas: val ? null : 'DISPONIBLE'
+    }).eq('id', perfilId)
+    setEditando(null)
+    cargar()
+  }
+
+  if (loading) return <div style={{textAlign:'center',padding:'60px 0',color:'var(--text3)'}}>⏳ Cargando cuentas...</div>
+
+  return (
+    <div style={{maxWidth:520,margin:'0 auto',padding:'14px 16px 0'}}>
+      {/* Buscador */}
+      <div style={{position:'relative',marginBottom:8}}>
+        <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:13}}>🔍</span>
+        <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar servicio, vinculada o cliente..."
+          style={{...inputSt,paddingLeft:36}}/>
+      </div>
+
+      {/* Filtros por servicio */}
+      <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:12,paddingBottom:2}}>
+        <button onClick={()=>setFiltroSvc('')} style={{...chipSt(filtroSvc==='')}}> Todos</button>
+        {serviciosUnicos.map(s=>(
+          <button key={s} onClick={()=>setFiltroSvc(filtroSvc===s?'':s)} style={{...chipSt(filtroSvc===s)}}>{s}</button>
+        ))}
+      </div>
+
+      {/* Cuentas */}
+      {cuentasFiltradas.map(cuenta => {
+        const perfiles = (cuenta.perfiles_espacios || []).sort((a,b) => String(a.perfil).localeCompare(String(b.perfil), undefined, {numeric:true}))
+        const disponibles = perfiles.filter(p => !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE').length
+        const total = perfiles.length
+
+        return (
+          <div key={cuenta.id} style={{background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:14,padding:'14px 16px',marginBottom:10}}>
+            {/* Header cuenta */}
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:800,fontSize:15,letterSpacing:'-0.01em'}}>{cuenta.servicio}</div>
+                <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
+                  <span style={{background:'rgba(167,139,250,0.12)',color:'var(--purple)',padding:'1px 7px',borderRadius:5,fontSize:10,fontWeight:600}}>{cuenta.vinculada}</span>
+                  {cuenta.correo && <span style={{marginLeft:6,color:'var(--text3)'}}>{cuenta.correo}</span>}
+                </div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:12,fontWeight:700,color:disponibles>0?'var(--green)':'var(--text3)'}}>
+                  {disponibles} libre{disponibles!==1?'s':''}
+                </div>
+                <div style={{fontSize:10,color:'var(--text3)'}}>{total - disponibles}/{total} ocupados</div>
+              </div>
+            </div>
+
+            {/* Perfiles */}
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {perfiles.map(p => {
+                const esDisponible = !p.cliente_nombre || p.cliente_nombre.toUpperCase()==='DISPONIBLE' || (p.notas||'').toUpperCase()==='DISPONIBLE'
+                const isEditando = editando === p.id
+
+                return (
+                  <div key={p.id} style={{
+                    background:'var(--bg2)',border:`1px solid ${esDisponible?'rgba(52,211,153,0.2)':'var(--border2)'}`,
+                    borderRadius:8,padding:'8px 10px',
+                    display:'flex',alignItems:'center',gap:8,
+                  }}>
+                    {/* Perfil # */}
+                    <div style={{
+                      minWidth:32,height:32,borderRadius:6,
+                      background:esDisponible?'rgba(52,211,153,0.1)':'var(--bg1)',
+                      border:`1px solid ${esDisponible?'rgba(52,211,153,0.3)':'var(--border)'}`,
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                      fontSize:11,fontWeight:800,color:esDisponible?'var(--green)':'var(--text2)',
+                      flexShrink:0,
+                    }}>{p.perfil}</div>
+
+                    {/* Info */}
+                    <div style={{flex:1,minWidth:0}}>
+                      {isEditando ? (
+                        <div style={{display:'flex',gap:6}}>
+                          <input value={editVal} onChange={e=>setEditVal(e.target.value)}
+                            onKeyDown={e=>{ if(e.key==='Enter') guardarCliente(p.id,editVal); if(e.key==='Escape') setEditando(null) }}
+                            placeholder="Nombre del cliente..." autoFocus
+                            style={{...inputSt,padding:'4px 8px',fontSize:12,flex:1}}/>
+                          <button onClick={()=>guardarCliente(p.id,editVal)} style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700}}>✓</button>
+                          <button onClick={()=>setEditando(null)} style={{background:'var(--bg1)',color:'var(--text3)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',cursor:'pointer',fontSize:11}}>✕</button>
+                        </div>
+                      ) : (
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <span style={{fontSize:13,fontWeight:esDisponible?400:600,color:esDisponible?'var(--green)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                            {esDisponible ? 'DISPONIBLE' : p.cliente_nombre}
+                          </span>
+                          {p.notas && !esDisponible && <span style={{fontSize:10,color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>· {p.notas}</span>}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* PIN */}
+                    {p.pin && (
+                      <div style={{flexShrink:0,background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:6,padding:'3px 8px',fontSize:11,fontWeight:700,color:'var(--yellow)',fontFamily:'var(--mono)',letterSpacing:'0.05em'}}>
+                        {p.pin}
+                      </div>
+                    )}
+
+                    {/* Editar */}
+                    {!isEditando && (
+                      <button onClick={()=>{ setEditando(p.id); setEditVal(esDisponible?'':p.cliente_nombre||'') }}
+                        style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:14,padding:'2px 4px',flexShrink:0}}>✏️</button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── SHARED STYLES ─────────────────────────────────────────
+const inputSt = {
+  width:'100%',boxSizing:'border-box',background:'var(--bg2)',
+  border:'1px solid var(--border2)',borderRadius:8,padding:'10px 12px',
+  color:'var(--text)',fontSize:13,fontFamily:'inherit',outline:'none',
+}
+const chipSt = (active) => ({
+  background:active?'rgba(91,142,240,0.15)':'var(--bg2)',
+  color:active?'var(--accent)':'var(--text3)',
+  border:`1px solid ${active?'rgba(91,142,240,0.4)':'var(--border)'}`,
+  borderRadius:8,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600,
+  whiteSpace:'nowrap',flexShrink:0,transition:'all 0.15s',
+})
+
+// ─── ROOT ─────────────────────────────────────────────────
+export default function Root() {
+  const [sesion, setSesion] = useState(null)
+  if (!sesion) return <Login onLogin={setSesion} />
+  return <App sesion={sesion} onLogout={() => setSesion(null)} />
 }
