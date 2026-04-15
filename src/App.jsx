@@ -494,6 +494,48 @@ function ModalEditar({ servicio, cliente, onGuardar, onCerrar }) {
   )
 }
 
+// ─── MODAL EDITAR CLIENTE ────────────────────────────────
+function ModalEditarCliente({ cliente, onGuardar, onCerrar }) {
+  const [nombre, setNombre] = useState(cliente.nombre || '')
+  const [tel, setTel] = useState(cliente.telefono || '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function guardar() {
+    if (!nombre.trim()) return setError('El nombre es obligatorio')
+    setSaving(true); setError('')
+    try {
+      const { error: e } = await supabase.from('clientes').update({
+        nombre: nombre.trim(),
+        telefono: tel.trim() || null,
+      }).eq('id', cliente.id)
+      if (e) throw e
+      onGuardar(); onCerrar()
+    } catch(e) { setError('Error: ' + e.message); setSaving(false) }
+  }
+
+  return (
+    <Modal onClose={onCerrar} maxWidth={400}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div style={{fontWeight:800,fontSize:18}}>👤 Editar cliente</div>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
+      </div>
+      <div style={{marginBottom:14}}>
+        <label>NOMBRE *</label>
+        <input value={nombre} onChange={e=>{setNombre(e.target.value);setError('')}} placeholder="Nombre del cliente" />
+      </div>
+      <div style={{marginBottom:20}}>
+        <label>TELÉFONO WHATSAPP</label>
+        <input value={tel} onChange={e=>setTel(e.target.value)} placeholder="6641234567" type="tel" style={{fontFamily:'var(--mono)'}} />
+      </div>
+      {error && <div style={{background:'#1a0008',border:'1px solid #ff336630',borderRadius:8,padding:'8px 12px',marginBottom:14,fontSize:12,color:'var(--red)'}}>⚠️ {error}</div>}
+      <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:15}} onClick={guardar} disabled={saving}>
+        {saving ? 'Guardando...' : '✓ Guardar'}
+      </button>
+    </Modal>
+  )
+}
+
 // ─── LOGIN ────────────────────────────────────────────────
 function Login({ onLogin }) {
   const [usuario, setUsuario] = useState('')
@@ -553,6 +595,8 @@ const FILTROS = [
   {val:'3dias',label:'🔴 ≤3d'},
   {val:'semana',label:'🟠 7d'},
   {val:'mes',label:'🟡 30d'},
+  {val:'cobrados',label:'✅ Cobrados'},
+  {val:'pendientes',label:'⏳ Pendientes'},
 ]
 
 function App({ sesion, onLogout }) {
@@ -568,6 +612,7 @@ function App({ sesion, onLogout }) {
   const [modalForm, setModalForm] = useState(null)
   const [modalRenovar, setModalRenovar] = useState(null)
   const [modalEditar, setModalEditar] = useState(null)
+  const [modalEditarCliente, setModalEditarCliente] = useState(null)
   const [modalConfirm, setModalConfirm] = useState(null)
   const [notif, setNotif] = useState({})
   const [vista, setVista] = useState('cobros') // 'cobros' | 'cuentas'
@@ -626,11 +671,13 @@ function App({ sesion, onLogout }) {
         servicios.some(s => s.vinculada && s.vinculada.toLowerCase().includes(q))
       const matchV = !filtroVinc || servicios.some(s => s.vinculada === filtroVinc)
       const ok = matchQ && matchV
-      if (filtro === 'vencidos') return ok && dMin !== null && dMin < 0
-      if (filtro === 'hoy')      return ok && dMin === 0
-      if (filtro === '3dias')    return ok && dMin !== null && dMin <= 3
-      if (filtro === 'semana')   return ok && dMin !== null && dMin <= 7
-      if (filtro === 'mes')      return ok && dMin !== null && dMin <= 30
+      if (filtro === 'vencidos')   return ok && dMin !== null && dMin < 0
+      if (filtro === 'hoy')        return ok && dMin === 0
+      if (filtro === '3dias')      return ok && dMin !== null && dMin <= 3
+      if (filtro === 'semana')     return ok && dMin !== null && dMin <= 7
+      if (filtro === 'mes')        return ok && dMin !== null && dMin <= 30
+      if (filtro === 'cobrados')   return ok && servicios.every(s => s.cobrado)
+      if (filtro === 'pendientes') return ok && servicios.some(s => !s.cobrado)
       return ok
     })
     if (orden === 'nombre') lista = [...lista].sort((a,b) => a.cliente.nombre.localeCompare(b.cliente.nombre))
@@ -712,6 +759,7 @@ function App({ sesion, onLogout }) {
       {modalForm && <ModalServicio clienteId={modalForm.clienteId} clienteNombre={modalForm.clienteNombre} onGuardar={cargarDatos} onCerrar={()=>setModalForm(null)} />}
       {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={cargarDatos} onCerrar={()=>setModalRenovar(null)} />}
       {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={cargarDatos} onCerrar={()=>setModalEditar(null)} />}
+      {modalEditarCliente && <ModalEditarCliente cliente={modalEditarCliente} onGuardar={cargarDatos} onCerrar={()=>setModalEditarCliente(null)} />}
       {modalConfirm && <ModalConfirm {...modalConfirm} onCancelar={()=>setModalConfirm(null)} />}
 
       {/* HEADER */}
@@ -862,6 +910,10 @@ function App({ sesion, onLogout }) {
                 {cliente.telefono && (
                   <a href={`https://wa.me/52${cliente.telefono.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
                     className="btn" style={{background:'#001a0e',border:'1px solid #00ff8830',color:'var(--green)',padding:'4px 8px',fontSize:11,textDecoration:'none'}}>📱</a>
+                )}
+                {esAdmin && (
+                  <button className="btn" style={{background:'transparent',border:'1px solid #00d4ff30',color:'var(--cyan)',padding:'4px 8px',fontSize:11}}
+                    onClick={()=>setModalEditarCliente(cliente)}>✏️</button>
                 )}
                 {esAdmin && (
                   <button className="btn" style={{background:'var(--bg2)',border:'1px solid var(--cyan)',color:'var(--cyan)',padding:'4px 8px',fontSize:11}}
