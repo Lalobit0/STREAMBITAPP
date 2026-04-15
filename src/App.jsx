@@ -550,7 +550,7 @@ const FILTROS = [
   {val:'todos',label:'Todos'},
   {val:'vencidos',label:'💀 Vencidos'},
   {val:'hoy',label:'🔴 Hoy'},
-  {val:'3dias',label:'🔴 3d'},
+  {val:'3dias',label:'🔴 ≤3d'},
   {val:'semana',label:'🟠 7d'},
   {val:'mes',label:'🟡 30d'},
 ]
@@ -560,7 +560,7 @@ function App({ sesion, onLogout }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [buscar, setBuscar] = useState('')
-  const [filtro, setFiltro] = useState('todos')
+  const [filtro, setFiltro] = useState('3dias')
   const [filtroVinc, setFiltroVinc] = useState('')
   const [orden, setOrden] = useState('fecha')
   const [verRes, setVerRes] = useState(false)
@@ -628,9 +628,9 @@ function App({ sesion, onLogout }) {
       const ok = matchQ && matchV
       if (filtro === 'vencidos') return ok && dMin !== null && dMin < 0
       if (filtro === 'hoy')      return ok && dMin === 0
-      if (filtro === '3dias')    return ok && dMin !== null && dMin >= 0 && dMin <= 3
-      if (filtro === 'semana')   return ok && dMin !== null && dMin >= 0 && dMin <= 7
-      if (filtro === 'mes')      return ok && dMin !== null && dMin >= 0 && dMin <= 30
+      if (filtro === '3dias')    return ok && dMin !== null && dMin <= 3
+      if (filtro === 'semana')   return ok && dMin !== null && dMin <= 7
+      if (filtro === 'mes')      return ok && dMin !== null && dMin <= 30
       return ok
     })
     if (orden === 'nombre') lista = [...lista].sort((a,b) => a.cliente.nombre.localeCompare(b.cliente.nombre))
