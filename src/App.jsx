@@ -609,6 +609,87 @@ function ModalEditarCliente({ cliente, onGuardar, onCerrar }) {
   )
 }
 
+// ─── MODAL HISTORIAL CLIENTE ──────────────────────────────
+function ModalHistorial({ cliente, onCerrar }) {
+  const [servicios, setServicios] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function cargar() {
+      const { data } = await supabase
+        .from('servicios')
+        .select('*')
+        .eq('cliente_id', cliente.id)
+        .order('created_at', { ascending: false })
+      setServicios(data || [])
+      setLoading(false)
+    }
+    cargar()
+  }, [cliente.id])
+
+  const totalGastado = servicios.reduce((s,sv) => s + parseFloat(sv.precio||0), 0)
+  const cobrados = servicios.filter(s => s.cobrado)
+  const activos = servicios.filter(s => !s.cancelado)
+
+  return (
+    <Modal onClose={onCerrar}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:18}}>📋 Historial</div>
+          <div style={{fontSize:12,color:'var(--text2)',fontFamily:'var(--mono)',marginTop:2}}>{cliente.nombre}</div>
+        </div>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
+      </div>
+
+      {/* Stats rápidas */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:16}}>
+        {[
+          {label:'SERVICIOS',val:activos.length,color:'var(--cyan)'},
+          {label:'COBRADOS',val:cobrados.length,color:'var(--green)'},
+          {label:'TOTAL',val:`$${totalGastado.toLocaleString()}`,color:'var(--yellow)'},
+        ].map(stat => (
+          <div key={stat.label} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
+            <div style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:3}}>{stat.label}</div>
+            <div style={{fontSize:15,fontWeight:800,color:stat.color,fontFamily:'var(--mono)'}}>{stat.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{textAlign:'center',padding:'30px 0',color:'var(--text3)',fontFamily:'var(--mono)',fontSize:12}}>⏳ Cargando...</div>
+      ) : servicios.length === 0 ? (
+        <div style={{textAlign:'center',padding:'30px 0',color:'var(--text3)',fontFamily:'var(--mono)',fontSize:12}}>Sin historial</div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {servicios.map(s => {
+            const cancelado = (s.notas||'').startsWith('CANCELADO') || s.cancelado
+            const d = diasRestantes(s.fecha_vencimiento)
+            return (
+              <div key={s.id} style={{
+                background:'var(--bg2)',border:`1px solid ${cancelado?'#ff336620':s.cobrado?'#00ff8820':'var(--border)'}`,
+                borderRadius:8,padding:'10px 12px',opacity:cancelado?0.5:1,
+              }}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                  <span style={{fontFamily:'var(--mono)',fontSize:12,fontWeight:700,flex:1}}>{s.cuenta}</span>
+                  {s.vinculada && <span style={{fontSize:10,color:'var(--purple)',background:'rgba(157,78,221,0.15)',padding:'1px 6px',borderRadius:4}}>{s.vinculada}</span>}
+                  <span style={{fontSize:12,fontWeight:700,color:'var(--green)',fontFamily:'var(--mono)'}}>${parseFloat(s.precio||0).toLocaleString()}</span>
+                </div>
+                <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+                  <span style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>📅 {formatFecha(s.fecha_vencimiento)}</span>
+                  {s.cobrado && <span style={{fontSize:10,color:'var(--green)',fontFamily:'var(--mono)'}}>✅ {formatFecha(s.cobrado)}</span>}
+                  {cancelado && <span style={{fontSize:10,color:'var(--red)'}}>❌ Cancelado</span>}
+                  {!cancelado && !s.cobrado && <BadgeDias d={d}/>}
+                  {s.notas && !cancelado && <span style={{fontSize:10,color:'var(--text3)'}}>📝 {s.notas}</span>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 // ─── LOGIN ────────────────────────────────────────────────
 function Login({ onLogin }) {
   const [usuario, setUsuario] = useState('')
@@ -685,6 +766,7 @@ function App({ sesion, onLogout }) {
   const [modalCobrarRenovar, setModalCobrarRenovar] = useState(null)
   const [modalEditar, setModalEditar] = useState(null)
   const [modalEditarCliente, setModalEditarCliente] = useState(null)
+  const [modalHistorial, setModalHistorial] = useState(null)
   const [modalConfirm, setModalConfirm] = useState(null)
   const [notif, setNotif] = useState({})
   const [vista, setVista] = useState('cobros') // 'cobros' | 'cuentas'
@@ -797,6 +879,10 @@ function App({ sesion, onLogout }) {
 
   // Stats
   const totalMes = data.reduce((s,c) => s + c.total, 0)
+  const totalCobrado = data.reduce((s,c) => s + c.servicios.reduce((a,sv) => a + (sv.cobrado ? parseFloat(sv.precio||0) : 0), 0), 0)
+  const totalPendiente = totalMes - totalCobrado
+  const countCobrados = data.reduce((s,c) => s + c.servicios.filter(sv=>sv.cobrado).length, 0)
+  const countPendientes = data.reduce((s,c) => s + c.servicios.filter(sv=>!sv.cobrado).length, 0)
   const urgentes7 = data.filter(c => c.dMin !== null && c.dMin >= 0 && c.dMin <= 7)
   const totalUrg = urgentes7.reduce((s,c) => s + c.total, 0)
   const urgentes3 = data.filter(c => c.dMin !== null && c.dMin >= 0 && c.dMin <= 3).length
@@ -833,6 +919,7 @@ function App({ sesion, onLogout }) {
       {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={cargarDatos} onCerrar={()=>setModalCobrarRenovar(null)} />}
       {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={cargarDatos} onCerrar={()=>setModalEditar(null)} />}
       {modalEditarCliente && <ModalEditarCliente cliente={modalEditarCliente} onGuardar={cargarDatos} onCerrar={()=>setModalEditarCliente(null)} />}
+      {modalHistorial && <ModalHistorial cliente={modalHistorial} onCerrar={()=>setModalHistorial(null)} />}
       {modalConfirm && <ModalConfirm {...modalConfirm} onCancelar={()=>setModalConfirm(null)} />}
 
       {/* HEADER */}
@@ -881,17 +968,36 @@ function App({ sesion, onLogout }) {
               </button>
               {verRes && (
                 <div style={{padding:'0 14px 14px'}}>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
-                    <div style={{background:'var(--bg3)',borderRadius:10,padding:'10px 14px',border:'1px solid var(--border)'}}>
-                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:4}}>TOTAL POR COBRAR</div>
-                      <div style={{fontSize:22,fontWeight:800,color:'var(--green)',fontFamily:'var(--mono)'}}>${totalMes.toLocaleString()}</div>
-                      <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{data.length} clientes</div>
+                  {/* Cobrado vs Pendiente */}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+                    <div style={{background:'#001a0e',borderRadius:10,padding:'10px 14px',border:'1px solid #00ff8830'}}>
+                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:4,fontFamily:'var(--mono)'}}>✅ COBRADO</div>
+                      <div style={{fontSize:20,fontWeight:800,color:'var(--green)',fontFamily:'var(--mono)'}}>${totalCobrado.toLocaleString()}</div>
+                      <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{countCobrados} servicios</div>
                     </div>
                     <div style={{background:'#1a0800',borderRadius:10,padding:'10px 14px',border:'1px solid #ff8c0030'}}>
-                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:4}}>URGENTE (7 DÍAS)</div>
-                      <div style={{fontSize:22,fontWeight:800,color:'var(--orange)',fontFamily:'var(--mono)'}}>${totalUrg.toLocaleString()}</div>
-                      <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{urgentes7.length} clientes</div>
+                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:4,fontFamily:'var(--mono)'}}>⏳ PENDIENTE</div>
+                      <div style={{fontSize:20,fontWeight:800,color:'var(--orange)',fontFamily:'var(--mono)'}}>${totalPendiente.toLocaleString()}</div>
+                      <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{countPendientes} servicios</div>
                     </div>
+                  </div>
+                  {/* Barra de progreso cobrado */}
+                  <div style={{marginBottom:12}}>
+                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                      <span style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>PROGRESO DEL MES</span>
+                      <span style={{fontSize:10,color:'var(--green)',fontFamily:'var(--mono)',fontWeight:700}}>
+                        {totalMes>0?Math.round(totalCobrado/totalMes*100):0}%
+                      </span>
+                    </div>
+                    <div style={{height:6,background:'var(--bg3)',borderRadius:99,overflow:'hidden'}}>
+                      <div style={{
+                        height:'100%',borderRadius:99,
+                        background:'linear-gradient(90deg,var(--green),var(--cyan))',
+                        width:`${totalMes>0?Math.round(totalCobrado/totalMes*100):0}%`,
+                        transition:'width .4s ease',
+                      }}/>
+                    </div>
+                    <div style={{fontSize:10,color:'var(--text3)',marginTop:4,fontFamily:'var(--mono)'}}>Total: ${totalMes.toLocaleString()} · {data.length} clientes</div>
                   </div>
                   {/* Por vinculada */}
                   <div style={{marginBottom:10}}>
@@ -1035,7 +1141,8 @@ function App({ sesion, onLogout }) {
             <div key={cliente.id} className={cardClass} style={{marginBottom:10,padding:'12px 14px'}}>
               {/* Header cliente */}
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-                <div style={{fontWeight:800,fontSize:15,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{cliente.nombre}</div>
+                <div style={{fontWeight:800,fontSize:15,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer',color:'var(--text)'}}
+                  onClick={()=>setModalHistorial(cliente)}>{cliente.nombre}</div>
                 {esAdmin && <span style={{color:'var(--green)',fontWeight:800,fontSize:13,fontFamily:'var(--mono)',whiteSpace:'nowrap'}}>${total.toLocaleString()}</span>}
                 {cliente.telefono && (
                   <a href={`https://wa.me/52${cliente.telefono.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
@@ -1152,10 +1259,12 @@ function App({ sesion, onLogout }) {
 function CuentasView() {
   const [cuentas, setCuentas] = useState([])
   const [loading, setLoading] = useState(true)
-  const [editando, setEditando] = useState(null) // perfil id
+  const [editando, setEditando] = useState(null)
   const [editVal, setEditVal] = useState('')
   const [buscar, setBuscar] = useState('')
   const [filtroSvc, setFiltroSvc] = useState('')
+  const [agregando, setAgregando] = useState(null) // cuenta_id donde se agrega perfil
+  const [nuevoPerfil, setNuevoPerfil] = useState({perfil:'',pin:'',cliente:''})
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -1189,6 +1298,25 @@ function CuentasView() {
     cargar()
   }
 
+  async function agregarPerfil(cuentaId) {
+    if (!nuevoPerfil.perfil.trim()) return
+    await supabase.from('perfiles_espacios').insert({
+      cuenta_id: cuentaId,
+      perfil: nuevoPerfil.perfil.trim(),
+      pin: nuevoPerfil.pin.trim() || null,
+      cliente_nombre: nuevoPerfil.cliente.trim() || null,
+      notas: nuevoPerfil.cliente.trim() ? null : 'DISPONIBLE',
+    })
+    setAgregando(null)
+    setNuevoPerfil({perfil:'',pin:'',cliente:''})
+    cargar()
+  }
+
+  async function eliminarPerfil(perfilId) {
+    await supabase.from('perfiles_espacios').delete().eq('id', perfilId)
+    cargar()
+  }
+
   if (loading) return <div style={{textAlign:'center',padding:'60px 0',color:'var(--text3)'}}>⏳ Cargando cuentas...</div>
 
   return (
@@ -1213,6 +1341,7 @@ function CuentasView() {
         const perfiles = (cuenta.perfiles_espacios || []).sort((a,b) => String(a.perfil).localeCompare(String(b.perfil), undefined, {numeric:true}))
         const disponibles = perfiles.filter(p => !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE').length
         const total = perfiles.length
+        const estaAgregando = agregando === cuenta.id
 
         return (
           <div key={cuenta.id} style={{background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:14,padding:'14px 16px',marginBottom:10}}>
@@ -1225,13 +1354,46 @@ function CuentasView() {
                   {cuenta.correo && <span style={{marginLeft:6,color:'var(--text3)'}}>{cuenta.correo}</span>}
                 </div>
               </div>
-              <div style={{textAlign:'right'}}>
+              <div style={{textAlign:'right',marginRight:6}}>
                 <div style={{fontSize:12,fontWeight:700,color:disponibles>0?'var(--green)':'var(--text3)'}}>
                   {disponibles} libre{disponibles!==1?'s':''}
                 </div>
                 <div style={{fontSize:10,color:'var(--text3)'}}>{total - disponibles}/{total} ocupados</div>
               </div>
+              {/* Botón agregar perfil */}
+              <button onClick={()=>{ setAgregando(estaAgregando?null:cuenta.id); setNuevoPerfil({perfil:'',pin:'',cliente:''}) }}
+                style={{background:estaAgregando?'rgba(0,212,255,0.15)':'var(--bg2)',border:`1px solid ${estaAgregando?'var(--cyan)':'var(--border)'}`,color:estaAgregando?'var(--cyan)':'var(--text3)',borderRadius:8,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,flexShrink:0}}>
+                {estaAgregando?'✕':'+ Perfil'}
+              </button>
             </div>
+
+            {/* Form agregar perfil */}
+            {estaAgregando && (
+              <div style={{background:'var(--bg2)',border:'1px solid var(--cyan)22',borderRadius:10,padding:'10px 12px',marginBottom:10}}>
+                <div style={{fontSize:10,color:'var(--cyan)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>NUEVO PERFIL</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:6}}>
+                  <div>
+                    <label style={{fontSize:9}}>PERFIL *</label>
+                    <input value={nuevoPerfil.perfil} onChange={e=>setNuevoPerfil(p=>({...p,perfil:e.target.value}))}
+                      placeholder="Ej: 1, A, Admin" style={{...inputSt,padding:'6px 10px',fontSize:12}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:9}}>PIN</label>
+                    <input value={nuevoPerfil.pin} onChange={e=>setNuevoPerfil(p=>({...p,pin:e.target.value}))}
+                      placeholder="Opcional" style={{...inputSt,padding:'6px 10px',fontSize:12,fontFamily:'var(--mono)'}}/>
+                  </div>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <label style={{fontSize:9}}>CLIENTE (dejar vacío = DISPONIBLE)</label>
+                  <input value={nuevoPerfil.cliente} onChange={e=>setNuevoPerfil(p=>({...p,cliente:e.target.value}))}
+                    placeholder="Nombre del cliente..." style={{...inputSt,padding:'6px 10px',fontSize:12}}/>
+                </div>
+                <button onClick={()=>agregarPerfil(cuenta.id)}
+                  style={{background:'var(--cyan)',color:'var(--bg)',border:'none',borderRadius:8,padding:'6px 16px',cursor:'pointer',fontSize:12,fontWeight:700,width:'100%'}}>
+                  ✓ Agregar perfil
+                </button>
+              </div>
+            )}
 
             {/* Perfiles */}
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
@@ -1283,10 +1445,14 @@ function CuentasView() {
                       </div>
                     )}
 
-                    {/* Editar */}
+                    {/* Editar + Eliminar */}
                     {!isEditando && (
-                      <button onClick={()=>{ setEditando(p.id); setEditVal(esDisponible?'':p.cliente_nombre||'') }}
-                        style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:14,padding:'2px 4px',flexShrink:0}}>✏️</button>
+                      <div style={{display:'flex',gap:4,flexShrink:0}}>
+                        <button onClick={()=>{ setEditando(p.id); setEditVal(esDisponible?'':p.cliente_nombre||'') }}
+                          style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:14,padding:'2px 4px'}}>✏️</button>
+                        <button onClick={()=>eliminarPerfil(p.id)}
+                          style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:13,padding:'2px 4px',opacity:0.6}}>🗑️</button>
+                      </div>
                     )}
                   </div>
                 )
