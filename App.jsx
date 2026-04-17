@@ -164,6 +164,23 @@ function BadgeDias({ d }) {
   return <span className="badge" style={{background:'#001a0e',color:'#00ff88',border:'1px solid #00ff8830'}}>{d} días</span>
 }
 
+// ─── TOAST ────────────────────────────────────────────────
+function Toast({ msg, tipo = 'ok' }) {
+  const col = tipo === 'ok' ? 'var(--green)' : tipo === 'error' ? 'var(--red)' : 'var(--cyan)'
+  const bg  = tipo === 'ok' ? '#001a0e' : tipo === 'error' ? '#1a0008' : '#001a2e'
+  return (
+    <div style={{
+      position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',
+      background:bg,border:`1px solid ${col}40`,borderRadius:10,
+      padding:'10px 20px',color:col,fontSize:13,fontWeight:700,
+      zIndex:999,boxShadow:`0 4px 20px ${col}20`,
+      animation:'slideUp .2s ease',whiteSpace:'nowrap',
+    }}>
+      {tipo==='ok'?'✅':tipo==='error'?'❌':'ℹ️'} {msg}
+    </div>
+  )
+}
+
 // ─── SELECTOR FECHA ───────────────────────────────────────
 const DURACIONES = [
   { label: '1 mes', m: 1 },
@@ -569,6 +586,7 @@ function ModalCobrarRenovar({ servicio, cliente, onGuardar, onCerrar }) {
 // ─── MODAL RENOVAR ────────────────────────────────────────
 function ModalRenovar({ servicio, cliente, onRenovar, onCerrar }) {
   const [fecha, setFecha] = useState('')
+  const [precio, setPrecio] = useState(String(servicio.precio || ''))
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -578,11 +596,15 @@ function ModalRenovar({ servicio, cliente, onRenovar, onCerrar }) {
     if (!fecha) return setError('Selecciona una fecha')
     setSaving(true); setError('')
     try {
-      const updates = { fecha_vencimiento: fecha, estado: 'PENDIENTE', cobrado: null }
+      const updates = {
+        fecha_vencimiento: fecha,
+        estado: 'PENDIENTE',
+        cobrado: null,
+        precio: parseFloat(precio) || servicio.precio,
+      }
       if (notas) updates.notas = servicio.notas ? servicio.notas + ' | ' + notas : notas
       const { error: e } = await supabase.from('servicios').update(updates).eq('id', servicio.id)
       if (e) throw e
-      // Sincronizar fecha en el perfil enlazado
       if (servicio.perfil_id) {
         await supabase.from('perfiles_espacios').update({ fecha_vencimiento: fecha }).eq('id', servicio.perfil_id)
       }
@@ -599,7 +621,6 @@ function ModalRenovar({ servicio, cliente, onRenovar, onCerrar }) {
         </div>
         <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
       </div>
-      {/* Indicador de estado cobro */}
       <div style={{display:'flex',gap:8,marginBottom:14}}>
         <div style={{flex:1,background:yaCobrado?'#001a0e':'#1a0800',border:`1px solid ${yaCobrado?'#00ff8840':'#ff8c0040'}`,borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
           <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:2}}>COBRO</div>
@@ -618,8 +639,12 @@ function ModalRenovar({ servicio, cliente, onRenovar, onCerrar }) {
         <SelectorFecha value={fecha} onChange={setFecha} label="NUEVA FECHA DE VENCIMIENTO" />
       </div>
       <div style={{marginBottom:14}}>
+        <label>PRECIO (MXN) — actualiza si cambió</label>
+        <input value={precio} onChange={e=>setPrecio(e.target.value)} type="number" placeholder="95" style={{fontFamily:'var(--mono)'}} />
+      </div>
+      <div style={{marginBottom:14}}>
         <label>NOTAS (opcional)</label>
-        <input value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej: Pagó en efectivo, renovó 3 meses..." />
+        <input value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej: Renovó 3 meses..." />
       </div>
       {error && <div style={{color:'var(--red)',fontSize:12,marginBottom:12}}>⚠️ {error}</div>}
       <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:15}} onClick={renovar} disabled={saving}>
@@ -637,6 +662,7 @@ function ModalEditar({ servicio, cliente, onGuardar, onCerrar }) {
     precio: servicio.precio || '',
     fecha: servicio.fecha_vencimiento || '',
     notas: servicio.notas || '',
+    accesoCliente: servicio.acceso_cliente || '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -653,8 +679,16 @@ function ModalEditar({ servicio, cliente, onGuardar, onCerrar }) {
         precio: parseFloat(form.precio) || 0,
         fecha_vencimiento: form.fecha,
         notas: form.notas || null,
+        acceso_cliente: form.accesoCliente || null,
       }).eq('id', servicio.id)
       if (e) throw e
+      // Sincronizar fecha en perfil si está enlazado
+      if (servicio.perfil_id) {
+        await supabase.from('perfiles_espacios').update({
+          fecha_vencimiento: form.fecha,
+          correo_cliente: form.accesoCliente || null,
+        }).eq('id', servicio.perfil_id)
+      }
       onGuardar(); onCerrar()
     } catch(e) { setError('Error: ' + e.message); setSaving(false) }
   }
@@ -692,6 +726,14 @@ function ModalEditar({ servicio, cliente, onGuardar, onCerrar }) {
       <div style={{marginBottom:14}}>
         <SelectorFecha value={form.fecha} onChange={v=>set('fecha',v)} label="FECHA VENCIMIENTO" />
       </div>
+
+      {form.cuenta && (
+        <div style={{marginBottom:14}}>
+          <label>{labelAcceso(form.cuenta)}</label>
+          <input value={form.accesoCliente} onChange={e=>set('accesoCliente',e.target.value)}
+            placeholder={placeholderAcceso(form.cuenta)} style={{fontFamily:'var(--mono)'}} />
+        </div>
+      )}
 
       <div style={{marginBottom:20}}>
         <label>NOTAS</label>
@@ -909,8 +951,14 @@ function App({ sesion, onLogout }) {
   const [modalHistorial, setModalHistorial] = useState(null)
   const [modalConfirm, setModalConfirm] = useState(null)
   const [notif, setNotif] = useState({})
-  const [vista, setVista] = useState('cobros') // 'cobros' | 'cuentas'
+  const [toast, setToast] = useState(null)
+  const [vista, setVista] = useState('cobros')
   const esAdmin = sesion.rol === 'admin'
+
+  function mostrarToast(msg, tipo = 'ok') {
+    setToast({ msg, tipo })
+    setTimeout(() => setToast(null), 2500)
+  }
 
   const cargarDatos = useCallback(async () => {
     setLoading(true); setError(null)
@@ -962,7 +1010,8 @@ function App({ sesion, onLogout }) {
       const matchQ = !q ||
         cliente.nombre.toLowerCase().includes(q) ||
         servicios.some(s => s.cuenta.toLowerCase().includes(q)) ||
-        servicios.some(s => s.vinculada && s.vinculada.toLowerCase().includes(q))
+        servicios.some(s => s.vinculada && s.vinculada.toLowerCase().includes(q)) ||
+        servicios.some(s => s.acceso_cliente && s.acceso_cliente.toLowerCase().includes(q))
       const matchV = !filtroVinc || servicios.some(s => s.vinculada === filtroVinc)
       const ok = matchQ && matchV
       if (filtro === 'vencidos')   return ok && dMin !== null && dMin < 0
@@ -978,6 +1027,25 @@ function App({ sesion, onLogout }) {
     if (orden === 'precio') lista = [...lista].sort((a,b) => b.total - a.total)
     return lista
   }, [data, buscar, filtro, filtroVinc, orden])
+
+  // Contadores por filtro
+  const contadores = useMemo(() => {
+    const base = data.filter(({ cliente, servicios }) => {
+      const q = buscar.toLowerCase()
+      const matchQ = !q || cliente.nombre.toLowerCase().includes(q) ||
+        servicios.some(s => s.cuenta.toLowerCase().includes(q)) ||
+        servicios.some(s => s.acceso_cliente && s.acceso_cliente.toLowerCase().includes(q))
+      return matchQ && (!filtroVinc || servicios.some(s => s.vinculada === filtroVinc))
+    })
+    return {
+      todos: base.length,
+      vencidos: base.filter(c => c.dMin !== null && c.dMin < 0).length,
+      hoy: base.filter(c => c.dMin === 0).length,
+      '3dias': base.filter(c => c.dMin !== null && c.dMin <= 3).length,
+      cobrados: base.filter(c => c.servicios.every(s => s.cobrado)).length,
+      pendientes: base.filter(c => c.servicios.some(s => !s.cobrado)).length,
+    }
+  }, [data, buscar, filtroVinc])
 
   function avisar(cliente, grupo) {
     const key = `${cliente.id}__${grupo.fecha}`
@@ -997,7 +1065,12 @@ function App({ sesion, onLogout }) {
 
   async function marcarCobrado(s) {
     const { error: e } = await supabase.from('servicios').update({ cobrado: fechaHoy() }).eq('id', s.id)
-    if (!e) cargarDatos()
+    if (!e) { cargarDatos(); mostrarToast('Cobro registrado') }
+  }
+
+  async function deshacerCobro(s) {
+    const { error: e } = await supabase.from('servicios').update({ cobrado: null, cobrado_en: null, estado: 'PENDIENTE' }).eq('id', s.id)
+    if (!e) { cargarDatos(); mostrarToast('Cobro revertido', 'info') }
   }
 
   async function liberarPerfil(s) {
@@ -1073,13 +1146,14 @@ function App({ sesion, onLogout }) {
     <div style={{minHeight:'100vh',background:'var(--bg)',fontFamily:'var(--font)',paddingBottom:40}}>
       <style>{CSS}</style>
 
-      {modalForm && <ModalServicio clienteId={modalForm.clienteId} clienteNombre={modalForm.clienteNombre} onGuardar={cargarDatos} onCerrar={()=>setModalForm(null)} />}
-      {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={cargarDatos} onCerrar={()=>setModalRenovar(null)} />}
-      {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={cargarDatos} onCerrar={()=>setModalCobrarRenovar(null)} />}
-      {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={cargarDatos} onCerrar={()=>setModalEditar(null)} />}
-      {modalEditarCliente && <ModalEditarCliente cliente={modalEditarCliente} onGuardar={cargarDatos} onCerrar={()=>setModalEditarCliente(null)} />}
+      {modalForm && <ModalServicio clienteId={modalForm.clienteId} clienteNombre={modalForm.clienteNombre} onGuardar={()=>{cargarDatos();mostrarToast('Servicio guardado')}} onCerrar={()=>setModalForm(null)} />}
+      {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={()=>{cargarDatos();mostrarToast('Servicio renovado')}} onCerrar={()=>setModalRenovar(null)} />}
+      {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cobrado y renovado ✅')}} onCerrar={()=>setModalCobrarRenovar(null)} />}
+      {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cambios guardados')}} onCerrar={()=>setModalEditar(null)} />}
+      {modalEditarCliente && <ModalEditarCliente cliente={modalEditarCliente} onGuardar={()=>{cargarDatos();mostrarToast('Cliente actualizado')}} onCerrar={()=>setModalEditarCliente(null)} />}
       {modalHistorial && <ModalHistorial cliente={modalHistorial} onCerrar={()=>setModalHistorial(null)} />}
       {modalConfirm && <ModalConfirm {...modalConfirm} onCancelar={()=>setModalConfirm(null)} />}
+      {toast && <Toast msg={toast.msg} tipo={toast.tipo} />}
 
       {/* HEADER */}
       <div style={{background:'var(--bg1)',borderBottom:'1px solid var(--border)',padding:'10px 14px 8px',position:'sticky',top:0,zIndex:10}}>
@@ -1227,6 +1301,7 @@ function App({ sesion, onLogout }) {
               const active = filtro === f.val
               const colMap = {todos:'#00d4ff',vencidos:'#ff3366',hoy:'#ff3366','3dias':'#ff6b6b',cobrados:'#00ff88',pendientes:'#ff8c00'}
               const col = colMap[f.val] || '#00d4ff'
+              const cnt = contadores[f.val]
               return (
                 <button key={f.val} onClick={()=>setFiltro(f.val)} style={{
                   padding:'3px 9px',borderRadius:20,cursor:'pointer',flexShrink:0,
@@ -1235,7 +1310,9 @@ function App({ sesion, onLogout }) {
                   background: active ? col+'20' : 'var(--bg2)',
                   color: active ? col : 'var(--text3)',
                   transition:'all .15s',
-                }}>{f.label}</button>
+                }}>
+                  {f.label}{cnt > 0 ? ` (${cnt})` : ''}
+                </button>
               )
             })}
             <div style={{width:1,background:'var(--border)',height:16,flexShrink:0,margin:'0 2px'}}/>
@@ -1350,6 +1427,15 @@ function App({ sesion, onLogout }) {
                               <button style={{padding:'2px 8px',borderRadius:6,border:'1px solid #00ff8830',background:'transparent',color:'var(--green)',cursor:'pointer',fontSize:10,fontWeight:700}}
                                 onClick={()=>setModalCobrarRenovar({servicio:s,cliente:cliente.nombre})}>✅ Cobrar</button>
                             )}
+                            {s.cobrado && (
+                              <button style={{padding:'2px 8px',borderRadius:6,border:'1px solid #ff336620',background:'transparent',color:'var(--text3)',cursor:'pointer',fontSize:10}}
+                                onClick={()=>setModalConfirm({
+                                  mensaje:'¿Deshacer cobro?',
+                                  detalle:`${cliente.nombre} · ${s.cuenta}\nSe revertirá el cobro del ${formatFecha(s.cobrado)}.`,
+                                  colorBtn:'var(--orange)',textoBtn:'↩️ Deshacer',
+                                  onConfirmar:()=>{deshacerCobro(s);setModalConfirm(null)}
+                                })} title="Deshacer cobro">↩️</button>
+                            )}
                             <div style={{flex:1}}/>
                             <button style={{padding:'2px 6px',borderRadius:5,border:'1px solid #00d4ff20',background:'transparent',color:'var(--cyan)',cursor:'pointer',fontSize:11}}
                               onClick={()=>setModalEditar({servicio:s,cliente:cliente.nombre})} title="Editar">✏️</button>
@@ -1403,11 +1489,51 @@ function CuentasView() {
 
   const cargar = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data: cuentasData } = await supabase
       .from('cuentas_maestras')
       .select('*, perfiles_espacios(*)')
       .order('servicio')
-    if (data) setCuentas(data)
+
+    if (!cuentasData) { setLoading(false); return }
+
+    // Para perfiles sin fecha_vencimiento, buscar el servicio del cliente por nombre
+    const clientesNombres = [...new Set(
+      cuentasData.flatMap(c => (c.perfiles_espacios||[]))
+        .filter(p => p.cliente_nombre && p.cliente_nombre.toUpperCase() !== 'DISPONIBLE' && !p.fecha_vencimiento)
+        .map(p => p.cliente_nombre.trim())
+    )]
+
+    let serviciosMap = {}
+    if (clientesNombres.length > 0) {
+      const { data: svsData } = await supabase
+        .from('servicios')
+        .select('id, cuenta, fecha_vencimiento, cliente_id, clientes(nombre)')
+        .eq('cancelado', false)
+        .in('clientes.nombre', clientesNombres)
+
+      // Mapear por nombre de cliente
+      for (const s of (svsData || [])) {
+        const nom = s.clientes?.nombre
+        if (!nom) continue
+        if (!serviciosMap[nom]) serviciosMap[nom] = []
+        serviciosMap[nom].push(s)
+      }
+    }
+
+    // Enriquecer perfiles con fecha del servicio si no tienen
+    const enriquecidas = cuentasData.map(c => ({
+      ...c,
+      perfiles_espacios: (c.perfiles_espacios || []).map(p => {
+        if (p.fecha_vencimiento || !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE') return p
+        const svs = serviciosMap[p.cliente_nombre.trim()] || []
+        // Buscar servicio que coincida con el tipo de cuenta
+        const match = svs.find(s => s.cuenta.toLowerCase().includes(c.servicio.toLowerCase().split(' ')[0]))
+          || svs.sort((a,b) => new Date(b.fecha_vencimiento) - new Date(a.fecha_vencimiento))[0]
+        return { ...p, fecha_vencimiento_calc: match?.fecha_vencimiento || null, servicio_id_calc: match?.id || null }
+      })
+    }))
+
+    setCuentas(enriquecidas)
     setLoading(false)
   }, [])
 
@@ -1637,8 +1763,10 @@ function CuentasView() {
               {perfiles.map(p => {
                 const esDisponible = !p.cliente_nombre || p.cliente_nombre.toUpperCase()==='DISPONIBLE' || (p.notas||'').toUpperCase()==='DISPONIBLE'
                 const isEditando = editando === p.id
-                const diasRestantes_ = p.fecha_vencimiento ? diasRestantes(p.fecha_vencimiento) : null
+                const fechaFinal = p.fecha_vencimiento || p.fecha_vencimiento_calc || null
+                const diasRestantes_ = fechaFinal ? diasRestantes(fechaFinal) : null
                 const urg = diasRestantes_ !== null && diasRestantes_ <= 3
+                const sinEnlace = !esDisponible && !p.servicio_id && p.fecha_vencimiento_calc
 
                 return (
                   <div key={p.id} style={{
@@ -1669,7 +1797,7 @@ function CuentasView() {
                         </div>
                       ) : (
                         <div>
-                          <div style={{display:'flex',alignItems:'center',gap:5}}>
+                          <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
                             <span style={{fontSize:12,fontWeight:esDisponible?400:600,color:esDisponible?'var(--green)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                               {esDisponible ? 'DISPONIBLE' : p.cliente_nombre}
                             </span>
@@ -1677,12 +1805,30 @@ function CuentasView() {
                             {!esDisponible && diasRestantes_ !== null && (
                               <BadgeDias d={diasRestantes_} />
                             )}
+                            {!esDisponible && diasRestantes_ === null && (
+                              <span style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)'}}>sin fecha</span>
+                            )}
                           </div>
                           {/* Correo/teléfono del cliente */}
                           {!esDisponible && (p.correo_cliente || p.telefono_cliente) && (
                             <div style={{fontSize:10,color:'var(--text3)',marginTop:1,fontFamily:'var(--mono)'}}>
                               {p.correo_cliente} {p.telefono_cliente && `· ${p.telefono_cliente}`}
                             </div>
+                          )}
+                          {/* Botón sincronizar si hay fecha calculada pero no enlace real */}
+                          {sinEnlace && (
+                            <button onClick={async()=>{
+                              await supabase.from('perfiles_espacios').update({
+                                servicio_id: p.servicio_id_calc,
+                                fecha_vencimiento: p.fecha_vencimiento_calc,
+                              }).eq('id', p.id)
+                              await supabase.from('servicios').update({ perfil_id: p.id }).eq('id', p.servicio_id_calc)
+                              cargar()
+                            }} style={{
+                              background:'rgba(0,212,255,0.1)',border:'1px solid #00d4ff30',
+                              color:'var(--cyan)',borderRadius:4,padding:'1px 6px',
+                              cursor:'pointer',fontSize:9,fontWeight:700,marginTop:3,display:'inline-block',
+                            }}>🔗 Sincronizar</button>
                           )}
                         </div>
                       )}
