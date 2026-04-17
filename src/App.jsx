@@ -923,105 +923,104 @@ function App({ sesion, onLogout }) {
       {modalConfirm && <ModalConfirm {...modalConfirm} onCancelar={()=>setModalConfirm(null)} />}
 
       {/* HEADER */}
-      <div style={{background:'var(--bg1)',borderBottom:'1px solid var(--border)',padding:'16px 16px 12px',position:'sticky',top:0,zIndex:10}}>
+      <div style={{background:'var(--bg1)',borderBottom:'1px solid var(--border)',padding:'10px 14px 8px',position:'sticky',top:0,zIndex:10}}>
         <div style={{maxWidth:520,margin:'0 auto'}}>
-          {/* Top bar */}
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-            <div style={{display:'flex',alignItems:'center',gap:10}}>
-              <div style={{width:38,height:38,borderRadius:10,background:'var(--bg2)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>👾</div>
-              <div>
-                <div style={{fontWeight:800,fontSize:16,letterSpacing:'-0.01em'}}>Streaming</div>
-                <div style={{fontSize:11,color:'var(--text3)',fontFamily:'var(--mono)'}}>{sesion.usuario} · <span style={{color:esAdmin?'var(--purple)':'var(--cyan)'}}>{esAdmin?'Admin':'Ayudante'}</span></div>
+
+          {/* Top bar compacta */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <div style={{width:30,height:30,borderRadius:8,background:'var(--bg2)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>👾</div>
+              <div style={{fontWeight:800,fontSize:14,letterSpacing:'-0.01em'}}>Streaming
+                <span style={{fontSize:10,color:esAdmin?'var(--purple)':'var(--cyan)',fontWeight:600,marginLeft:6,fontFamily:'var(--mono)'}}>{sesion.usuario}</span>
               </div>
+              {/* Tabs inline */}
+              {esAdmin && (
+                <div style={{display:'flex',gap:3,marginLeft:4}}>
+                  {[{val:'cobros',label:'💳'},{val:'cuentas',label:'🗂️'}].map(t=>(
+                    <button key={t.val} onClick={()=>setVista(t.val)} style={{
+                      padding:'3px 8px',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:700,
+                      background:vista===t.val?'rgba(0,212,255,0.15)':'transparent',
+                      color:vista===t.val?'var(--cyan)':'var(--text3)',
+                      border:`1px solid ${vista===t.val?'var(--cyan)30':'transparent'}`,
+                      transition:'all 0.15s',
+                    }}>{t.label}</button>
+                  ))}
+                </div>
+              )}
             </div>
-            <div style={{display:'flex',gap:6}}>
-              {esAdmin && <button className="btn btn-primary" style={{padding:'6px 14px'}} onClick={()=>setModalForm({})}>+ Nuevo</button>}
-              <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={cargarDatos} disabled={loading}>{loading?'⏳':'⟳'}</button>
-              <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onLogout}>⏏</button>
+            <div style={{display:'flex',gap:4}}>
+              {esAdmin && <button className="btn btn-primary" style={{padding:'5px 10px',fontSize:11}} onClick={()=>setModalForm({})}>+ Nuevo</button>}
+              <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={cargarDatos} disabled={loading}>{loading?'⏳':'⟳'}</button>
+              <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={onLogout}>⏏</button>
             </div>
           </div>
 
-          {/* Tabs — solo admin */}
-          {esAdmin && (
-            <div style={{display:'flex',gap:6,marginBottom:10}}>
-              {[{val:'cobros',label:'💳 Cobros'},{val:'cuentas',label:'🗂️ Cuentas'}].map(t=>(
-                <button key={t.val} onClick={()=>setVista(t.val)} style={{
-                  background:vista===t.val?'var(--accent)':'var(--bg2)',
-                  color:vista===t.val?'#fff':'var(--text3)',
-                  border:`1px solid ${vista===t.val?'var(--accent)':'var(--border)'}`,
-                  borderRadius:8,padding:'6px 14px',cursor:'pointer',fontSize:12,fontWeight:700,
-                  transition:'all 0.15s',
-                }}>{t.label}</button>
-              ))}
+          {/* Alerta urgentes */}
+          {vista==='cobros' && urgentes3 > 0 && (
+            <div style={{fontSize:10,color:'var(--red)',fontWeight:700,marginBottom:6,fontFamily:'var(--mono)'}}>
+              🔴 {urgentes3} cliente{urgentes3>1?'s':''} · ≤3 días
             </div>
           )}
 
-          {/* Alerta */}
-          {vista==='cobros' && urgentes3 > 0 && <div style={{fontSize:11,color:'var(--red)',fontWeight:700,marginBottom:8,fontFamily:'var(--mono)'}}>🔴 {urgentes3} cliente{urgentes3>1?'s':''} · ≤3 días</div>}
-
-          {/* Resumen - solo en cobros */}
+          {/* Resumen colapsable */}
           {vista==='cobros' && esAdmin && (
-            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,marginBottom:10,overflow:'hidden'}}>
-              <button onClick={()=>setVerRes(!verRes)} style={{width:'100%',background:'none',border:'none',padding:'10px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',color:'var(--text2)'}}>
-                <span style={{fontSize:12,fontWeight:600}}>💰 Resumen del mes</span>
-                <span style={{fontSize:11,fontFamily:'var(--mono)'}}>{verRes?'▲':'▼'}</span>
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,marginBottom:6,overflow:'hidden'}}>
+              <button onClick={()=>setVerRes(!verRes)} style={{width:'100%',background:'none',border:'none',padding:'7px 12px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',color:'var(--text2)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <span style={{fontSize:11,fontWeight:700}}>💰 Resumen</span>
+                  {!verRes && (
+                    <div style={{display:'flex',gap:8}}>
+                      <span style={{fontSize:11,color:'var(--green)',fontFamily:'var(--mono)',fontWeight:700}}>✅ ${totalCobrado.toLocaleString()}</span>
+                      <span style={{fontSize:11,color:'var(--orange)',fontFamily:'var(--mono)',fontWeight:700}}>⏳ ${totalPendiente.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+                <span style={{fontSize:10,fontFamily:'var(--mono)'}}>{verRes?'▲':'▼'}</span>
               </button>
               {verRes && (
-                <div style={{padding:'0 14px 14px'}}>
-                  {/* Cobrado vs Pendiente */}
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
-                    <div style={{background:'#001a0e',borderRadius:10,padding:'10px 14px',border:'1px solid #00ff8830'}}>
-                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:4,fontFamily:'var(--mono)'}}>✅ COBRADO</div>
-                      <div style={{fontSize:20,fontWeight:800,color:'var(--green)',fontFamily:'var(--mono)'}}>${totalCobrado.toLocaleString()}</div>
-                      <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{countCobrados} servicios</div>
+                <div style={{padding:'0 12px 12px'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:8}}>
+                    <div style={{background:'#001a0e',borderRadius:8,padding:'8px 12px',border:'1px solid #00ff8830'}}>
+                      <div style={{fontSize:9,color:'var(--text3)',marginBottom:3,fontFamily:'var(--mono)'}}>✅ COBRADO</div>
+                      <div style={{fontSize:18,fontWeight:800,color:'var(--green)',fontFamily:'var(--mono)'}}>${totalCobrado.toLocaleString()}</div>
+                      <div style={{fontSize:9,color:'var(--text3)',marginTop:1}}>{countCobrados} servicios</div>
                     </div>
-                    <div style={{background:'#1a0800',borderRadius:10,padding:'10px 14px',border:'1px solid #ff8c0030'}}>
-                      <div style={{fontSize:10,color:'var(--text3)',marginBottom:4,fontFamily:'var(--mono)'}}>⏳ PENDIENTE</div>
-                      <div style={{fontSize:20,fontWeight:800,color:'var(--orange)',fontFamily:'var(--mono)'}}>${totalPendiente.toLocaleString()}</div>
-                      <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{countPendientes} servicios</div>
+                    <div style={{background:'#1a0800',borderRadius:8,padding:'8px 12px',border:'1px solid #ff8c0030'}}>
+                      <div style={{fontSize:9,color:'var(--text3)',marginBottom:3,fontFamily:'var(--mono)'}}>⏳ PENDIENTE</div>
+                      <div style={{fontSize:18,fontWeight:800,color:'var(--orange)',fontFamily:'var(--mono)'}}>${totalPendiente.toLocaleString()}</div>
+                      <div style={{fontSize:9,color:'var(--text3)',marginTop:1}}>{countPendientes} servicios</div>
                     </div>
                   </div>
-                  {/* Barra de progreso cobrado */}
-                  <div style={{marginBottom:12}}>
-                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-                      <span style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>PROGRESO DEL MES</span>
-                      <span style={{fontSize:10,color:'var(--green)',fontFamily:'var(--mono)',fontWeight:700}}>
-                        {totalMes>0?Math.round(totalCobrado/totalMes*100):0}%
-                      </span>
-                    </div>
-                    <div style={{height:6,background:'var(--bg3)',borderRadius:99,overflow:'hidden'}}>
-                      <div style={{
-                        height:'100%',borderRadius:99,
-                        background:'linear-gradient(90deg,var(--green),var(--cyan))',
-                        width:`${totalMes>0?Math.round(totalCobrado/totalMes*100):0}%`,
-                        transition:'width .4s ease',
-                      }}/>
-                    </div>
-                    <div style={{fontSize:10,color:'var(--text3)',marginTop:4,fontFamily:'var(--mono)'}}>Total: ${totalMes.toLocaleString()} · {data.length} clientes</div>
-                  </div>
-                  {/* Por vinculada */}
                   <div style={{marginBottom:10}}>
-                    <div style={{fontSize:10,color:'var(--purple)',fontWeight:700,marginBottom:6,fontFamily:'var(--mono)'}}>POR VINCULADA</div>
+                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                      <span style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)'}}>PROGRESO · ${totalMes.toLocaleString()} total</span>
+                      <span style={{fontSize:9,color:'var(--green)',fontFamily:'var(--mono)',fontWeight:700}}>{totalMes>0?Math.round(totalCobrado/totalMes*100):0}%</span>
+                    </div>
+                    <div style={{height:5,background:'var(--bg3)',borderRadius:99,overflow:'hidden'}}>
+                      <div style={{height:'100%',borderRadius:99,background:'linear-gradient(90deg,var(--green),var(--cyan))',width:`${totalMes>0?Math.round(totalCobrado/totalMes*100):0}%`,transition:'width .4s ease'}}/>
+                    </div>
+                  </div>
+                  <div style={{marginBottom:8}}>
+                    <div style={{fontSize:9,color:'var(--purple)',fontWeight:700,marginBottom:5,fontFamily:'var(--mono)'}}>POR VINCULADA</div>
                     {resumenVinc.map(([k,v]) => (
-                      <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
-                        <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                          <span style={{fontSize:11,color:'var(--text2)',fontFamily:'var(--mono)'}}>{k}</span>
-                          <span style={{fontSize:9,background:'var(--bg3)',color:'var(--text3)',padding:'1px 5px',borderRadius:4}}>{v.count}</span>
+                      <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+                        <div style={{display:'flex',gap:5,alignItems:'center'}}>
+                          <span style={{fontSize:10,color:'var(--text2)',fontFamily:'var(--mono)'}}>{k}</span>
+                          <span style={{fontSize:9,background:'var(--bg3)',color:'var(--text3)',padding:'1px 4px',borderRadius:4}}>{v.count}</span>
                         </div>
-                        <span style={{fontSize:12,color:'var(--green)',fontWeight:700,fontFamily:'var(--mono)'}}>${v.total.toLocaleString()}</span>
+                        <span style={{fontSize:11,color:'var(--green)',fontWeight:700,fontFamily:'var(--mono)'}}>${v.total.toLocaleString()}</span>
                       </div>
                     ))}
                   </div>
-                  {/* Por servicio */}
                   <div>
-                    <div style={{fontSize:10,color:'var(--cyan)',fontWeight:700,marginBottom:6,fontFamily:'var(--mono)'}}>POR TIPO DE SERVICIO</div>
+                    <div style={{fontSize:9,color:'var(--cyan)',fontWeight:700,marginBottom:5,fontFamily:'var(--mono)'}}>POR SERVICIO</div>
                     {resumenServicio.map(([k,v]) => (
-                      <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
-                        <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                          <span style={{fontSize:11,color:'var(--text2)',fontFamily:'var(--mono)'}}>{k}</span>
-                          <span style={{fontSize:9,background:'var(--bg3)',color:'var(--text3)',padding:'1px 5px',borderRadius:4}}>{v.count}</span>
+                      <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+                        <div style={{display:'flex',gap:5,alignItems:'center'}}>
+                          <span style={{fontSize:10,color:'var(--text2)',fontFamily:'var(--mono)'}}>{k}</span>
+                          <span style={{fontSize:9,background:'var(--bg3)',color:'var(--text3)',padding:'1px 4px',borderRadius:4}}>{v.count}</span>
                         </div>
-                        <span style={{fontSize:12,color:'var(--green)',fontWeight:700,fontFamily:'var(--mono)'}}>${v.total.toLocaleString()}</span>
+                        <span style={{fontSize:11,color:'var(--green)',fontWeight:700,fontFamily:'var(--mono)'}}>${v.total.toLocaleString()}</span>
                       </div>
                     ))}
                   </div>
@@ -1032,82 +1031,64 @@ function App({ sesion, onLogout }) {
 
           {/* Buscador + filtros — solo en cobros */}
           {vista === 'cobros' && <>
-          {/* Buscador */}
-          <div style={{position:'relative',marginBottom:10}}>
-            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:14}}>⌕</span>
-            <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar nombre, servicio o vinculada..."
-              style={{paddingLeft:34}} />
+          {/* Buscador compacto */}
+          <div style={{position:'relative',marginBottom:6}}>
+            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:13}}>⌕</span>
+            <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar..."
+              style={{paddingLeft:28,padding:'7px 10px 7px 28px',fontSize:12}} />
           </div>
 
-          {/* Vinculadas */}
-          <div style={{marginBottom:10,background:'var(--bg2)',borderRadius:12,padding:'8px 10px',border:'1px solid var(--border)'}}>
-            <div style={{fontSize:9,color:'var(--text3)',fontWeight:700,fontFamily:'var(--mono)',marginBottom:6,letterSpacing:'0.08em'}}>🔗 FILTRAR POR CUENTA</div>
-            <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-              {/* Todas */}
-              <button onClick={()=>setFiltroVinc('')} style={{
-                padding:'4px 12px',borderRadius:6,border:'none',cursor:'pointer',
-                fontSize:11,fontWeight:700,whiteSpace:'nowrap',
-                background: filtroVinc==='' ? 'var(--cyan)' : 'var(--bg3)',
-                color: filtroVinc==='' ? 'var(--bg)' : 'var(--text2)',
-                boxShadow: filtroVinc==='' ? '0 0 8px #00d4ff40' : 'none',
-                transition:'all .15s',
-              }}>Todas</button>
-              {VINCULADAS.map(v => {
-                const active = filtroVinc === v
-                return (
-                  <button key={v} onClick={()=>setFiltroVinc(active?'':v)} style={{
-                    padding:'4px 12px',borderRadius:6,cursor:'pointer',
-                    fontSize:11,fontWeight:700,whiteSpace:'nowrap',
-                    border: `1px solid ${active?'#9d4edd80':'transparent'}`,
-                    background: active ? 'rgba(157,78,221,0.25)' : 'var(--bg3)',
-                    color: active ? '#e9d5ff' : 'var(--text2)',
-                    boxShadow: active ? '0 0 8px #9d4edd30' : 'none',
-                    transition:'all .15s',
-                  }}>{v}</button>
-                )
-              })}
-            </div>
+          {/* Vinculadas — scroll horizontal sin caja */}
+          <div style={{display:'flex',gap:4,overflowX:'auto',marginBottom:5,paddingBottom:2}}>
+            <button onClick={()=>setFiltroVinc('')} style={{
+              padding:'3px 10px',borderRadius:20,border:'none',cursor:'pointer',
+              fontSize:10,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,
+              background: filtroVinc==='' ? 'var(--cyan)' : 'var(--bg2)',
+              color: filtroVinc==='' ? 'var(--bg)' : 'var(--text3)',
+              transition:'all .15s',
+            }}>Todas</button>
+            {VINCULADAS.map(v => {
+              const active = filtroVinc === v
+              return (
+                <button key={v} onClick={()=>setFiltroVinc(active?'':v)} style={{
+                  padding:'3px 10px',borderRadius:20,cursor:'pointer',flexShrink:0,
+                  fontSize:10,fontWeight:700,whiteSpace:'nowrap',
+                  border:`1px solid ${active?'#9d4edd60':'var(--border)'}`,
+                  background: active ? 'rgba(157,78,221,0.2)' : 'var(--bg2)',
+                  color: active ? '#d8b4fe' : 'var(--text3)',
+                  transition:'all .15s',
+                }}>{v}</button>
+              )
+            })}
           </div>
 
-          {/* Filtros estado + orden */}
-          <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <div style={{display:'flex',gap:4,flexWrap:'wrap',flex:1}}>
-              {FILTROS.map(f => {
-                const active = filtro === f.val
-                const colMap = {
-                  todos:      '#00d4ff',
-                  vencidos:   '#ff3366',
-                  hoy:        '#ff3366',
-                  '3dias':    '#ff6b6b',
-                  cobrados:   '#00ff88',
-                  pendientes: '#ff8c00',
-                }
-                const col = colMap[f.val] || '#00d4ff'
-                return (
-                  <button key={f.val} onClick={()=>setFiltro(f.val)} style={{
-                    padding:'4px 11px',borderRadius:6,cursor:'pointer',
-                    fontSize:11,fontWeight:700,whiteSpace:'nowrap',
-                    border:`1px solid ${active ? col+'80' : 'transparent'}`,
-                    background: active ? col+'22' : 'var(--bg2)',
-                    color: active ? col : 'var(--text3)',
-                    boxShadow: active ? `0 0 6px ${col}25` : 'none',
-                    transition:'all .15s',
-                  }}>{f.label}</button>
-                )
-              })}
-            </div>
-            {/* Orden — iconos con tooltip-like text */}
-            <div style={{display:'flex',gap:3,flexShrink:0,borderLeft:'1px solid var(--border)',paddingLeft:6}}>
-              {[{val:'fecha',label:'📅',tip:'Fecha'},{val:'nombre',label:'🔤',tip:'Nombre'},{val:'precio',label:'💰',tip:'Precio'}].map(o => (
-                <button key={o.val} onClick={()=>setOrden(o.val)} title={o.tip} style={{
-                  padding:'4px 7px',borderRadius:6,
-                  border:`1px solid ${orden===o.val?'var(--cyan)':'transparent'}`,
-                  background:orden===o.val?'rgba(0,212,255,0.12)':'var(--bg2)',
-                  color:orden===o.val?'var(--cyan)':'var(--text3)',
-                  cursor:'pointer',fontSize:12,transition:'all .15s',
-                }}>{o.label}</button>
-              ))}
-            </div>
+          {/* Filtros estado + orden — una línea */}
+          <div style={{display:'flex',gap:4,overflowX:'auto',paddingBottom:2,alignItems:'center'}}>
+            {FILTROS.map(f => {
+              const active = filtro === f.val
+              const colMap = {todos:'#00d4ff',vencidos:'#ff3366',hoy:'#ff3366','3dias':'#ff6b6b',cobrados:'#00ff88',pendientes:'#ff8c00'}
+              const col = colMap[f.val] || '#00d4ff'
+              return (
+                <button key={f.val} onClick={()=>setFiltro(f.val)} style={{
+                  padding:'3px 9px',borderRadius:20,cursor:'pointer',flexShrink:0,
+                  fontSize:10,fontWeight:700,whiteSpace:'nowrap',
+                  border:`1px solid ${active?col+'60':'var(--border)'}`,
+                  background: active ? col+'20' : 'var(--bg2)',
+                  color: active ? col : 'var(--text3)',
+                  transition:'all .15s',
+                }}>{f.label}</button>
+              )
+            })}
+            <div style={{width:1,background:'var(--border)',height:16,flexShrink:0,margin:'0 2px'}}/>
+            {[{val:'fecha',label:'📅',tip:'Fecha'},{val:'nombre',label:'🔤',tip:'Nombre'},{val:'precio',label:'💰',tip:'Precio'}].map(o => (
+              <button key={o.val} onClick={()=>setOrden(o.val)} title={o.tip} style={{
+                padding:'3px 6px',borderRadius:6,flexShrink:0,
+                border:`1px solid ${orden===o.val?'var(--cyan)':'transparent'}`,
+                background:orden===o.val?'rgba(0,212,255,0.12)':'transparent',
+                color:orden===o.val?'var(--cyan)':'var(--text3)',
+                cursor:'pointer',fontSize:11,transition:'all .15s',
+              }}>{o.label}</button>
+            ))}
           </div>
           </>}
         </div>
@@ -1187,53 +1168,41 @@ function App({ sesion, onLogout }) {
                     </div>
                     {/* Servicios */}
                     {grupo.servicios.map((s, si) => (
-                      <div key={si} style={{background:'var(--bg)',borderRadius:8,padding:'8px 10px',marginBottom:si<grupo.servicios.length-1?5:0,border:'1px solid var(--border)'}}>
+                      <div key={si} style={{background:'var(--bg)',borderRadius:8,padding:'6px 8px',marginBottom:si<grupo.servicios.length-1?4:0,border:'1px solid var(--border)'}}>
                         {/* Fila 1: cuenta + vinculada + cobrado + precio */}
-                        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:s.notas&&esAdmin?4:esAdmin?5:0}}>
+                        <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:s.notas&&esAdmin?3:esAdmin?4:0}}>
                           <span style={{fontFamily:'var(--mono)',fontSize:12,fontWeight:700,color:'var(--text)'}}>{s.cuenta}</span>
-                          {s.vinculada && <span className="tag tag-vinc">{s.vinculada}</span>}
-                          {s.cobrado && <span className="tag tag-cobrado">✅ {formatFecha(s.cobrado)}</span>}
-                          {esAdmin && <span style={{color:'var(--green)',fontSize:12,fontWeight:700,fontFamily:'var(--mono)',marginLeft:'auto'}}>${parseFloat(s.precio||0).toLocaleString()}</span>}
+                          {s.vinculada && <span className="tag tag-vinc" style={{fontSize:9,padding:'1px 5px'}}>{s.vinculada}</span>}
+                          {s.cobrado && <span className="tag tag-cobrado" style={{fontSize:9,padding:'1px 5px'}}>✅ {formatFecha(s.cobrado)}</span>}
+                          {esAdmin && <span style={{color:'var(--green)',fontSize:11,fontWeight:700,fontFamily:'var(--mono)',marginLeft:'auto'}}>${parseFloat(s.precio||0).toLocaleString()}</span>}
                         </div>
                         {/* Notas (solo admin) */}
                         {s.notas && esAdmin && (
-                          <div style={{fontSize:11,color:'var(--text3)',marginBottom:5,paddingLeft:2}}>📝 {s.notas}</div>
+                          <div style={{fontSize:10,color:'var(--text3)',marginBottom:4,paddingLeft:2}}>📝 {s.notas}</div>
                         )}
-                        {/* Botones admin */}
+                        {/* Botones admin — iconos compactos */}
                         {esAdmin && (
-                          <div style={{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
+                          <div style={{display:'flex',gap:4,alignItems:'center'}}>
                             {!s.cobrado && (
-                              <button className="btn btn-success" style={{padding:'2px 8px',fontSize:10}}
-                                onClick={()=>setModalCobrarRenovar({servicio:s,cliente:cliente.nombre})}>
-                                ✅ Cobrado
-                              </button>
+                              <button style={{padding:'2px 8px',borderRadius:6,border:'1px solid #00ff8830',background:'transparent',color:'var(--green)',cursor:'pointer',fontSize:10,fontWeight:700}}
+                                onClick={()=>setModalCobrarRenovar({servicio:s,cliente:cliente.nombre})}>✅ Cobrar</button>
                             )}
                             <div style={{flex:1}}/>
-                            <button className="btn" style={{padding:'2px 8px',fontSize:10,background:'transparent',color:'var(--cyan)',border:'1px solid #00d4ff30'}}
-                              onClick={()=>setModalEditar({servicio:s,cliente:cliente.nombre})}>✏️</button>
-                            <button className="btn btn-danger" style={{padding:'2px 8px',fontSize:10}}
-                              onClick={()=>setModalConfirm({
-                                mensaje:'¿Cancelar servicio?',
-                                detalle:`${cliente.nombre} · ${s.cuenta}`,
-                                colorBtn:'var(--orange)',textoBtn:'Cancelar',
-                                onConfirmar:()=>{cancelar(s);setModalConfirm(null)}
-                              })}>❌</button>
-                            <button className="btn" style={{
-                                padding:'2px 8px',fontSize:10,
+                            <button style={{padding:'2px 6px',borderRadius:5,border:'1px solid #00d4ff20',background:'transparent',color:'var(--cyan)',cursor:'pointer',fontSize:11}}
+                              onClick={()=>setModalEditar({servicio:s,cliente:cliente.nombre})} title="Editar">✏️</button>
+                            <button style={{padding:'2px 6px',borderRadius:5,border:'1px solid #ff336620',background:'transparent',color:'var(--red)',cursor:'pointer',fontSize:11}}
+                              onClick={()=>setModalConfirm({mensaje:'¿Cancelar servicio?',detalle:`${cliente.nombre} · ${s.cuenta}`,colorBtn:'var(--orange)',textoBtn:'Cancelar',onConfirmar:()=>{cancelar(s);setModalConfirm(null)}})} title="Cancelar">❌</button>
+                            <button style={{
+                                padding:'2px 6px',borderRadius:5,cursor:'pointer',fontSize:10,fontWeight:700,
+                                border:`1px solid ${s.cobrado?'#00ff8830':'#00d4ff20'}`,
                                 background:'transparent',
-                                color: s.cobrado ? 'var(--green)' : 'var(--cyan)',
-                                border: `1px solid ${s.cobrado ? '#00ff8840' : '#00d4ff30'}`,
+                                color:s.cobrado?'var(--green)':'var(--cyan)',
                               }}
-                              onClick={()=>setModalRenovar({servicio:s,cliente:cliente.nombre})}>
-                              {s.cobrado ? '✅ Renovar' : '🔄 Renovar'}
+                              onClick={()=>setModalRenovar({servicio:s,cliente:cliente.nombre})} title="Renovar">
+                              {s.cobrado?'✅':'🔄'} Renovar
                             </button>
-                            <button className="btn btn-danger" style={{padding:'2px 8px',fontSize:10}}
-                              onClick={()=>setModalConfirm({
-                                mensaje:'¿Eliminar servicio?',
-                                detalle:`${cliente.nombre} · ${s.cuenta}`,
-                                textoBtn:'Eliminar',
-                                onConfirmar:()=>{eliminarServicio(s);setModalConfirm(null)}
-                              })}>🗑️</button>
+                            <button style={{padding:'2px 6px',borderRadius:5,border:'1px solid #ff336620',background:'transparent',color:'var(--red)',cursor:'pointer',fontSize:11,opacity:0.7}}
+                              onClick={()=>setModalConfirm({mensaje:'¿Eliminar servicio?',detalle:`${cliente.nombre} · ${s.cuenta}`,textoBtn:'Eliminar',onConfirmar:()=>{eliminarServicio(s);setModalConfirm(null)}})} title="Eliminar">🗑️</button>
                           </div>
                         )}
                       </div>
