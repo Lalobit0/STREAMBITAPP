@@ -269,44 +269,96 @@ function BuscadorServicio({ value, onChange }) {
   )
 }
 
+// ─── SERVICIOS QUE USAN PERFILES vs INDIVIDUALES ──────────
+const SERVICIOS_CON_PERFILES = ['Netflix','Netflix extra','Netflix genérico','Disney 4K','Disney HD','HBO HD','HBO 4K','HBO PLATINO','MAX']
+const SERVICIOS_INDIVIDUALES = ['Spotify','Spotify 3','YouTube','Youtubep1','Youtubep3','Office','Office3','Office12','Apple TV','APPLE ONE','ChatGPT gen','ChatGPT+','Canva1','Canva12','PRIME','Paramount','VIX','Crunchyroll']
+
+function tienePerfiles(cuenta) {
+  return SERVICIOS_CON_PERFILES.some(s => cuenta.toLowerCase().includes(s.toLowerCase()))
+}
+
 // ─── MODAL NUEVO/AGREGAR SERVICIO ─────────────────────────
-function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId, clientes }) {
-  const [form, setForm] = useState({ nombre: clienteNombre || '', clienteId: clienteId || '', vinculada: '', cuenta: '', precio: '', fecha: '', tel: '', notas: '' })
+function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
+  const [form, setForm] = useState({ nombre: clienteNombre || '', vinculada: '', cuenta: '', precio: '', fecha: '', tel: '', notas: '', correoCliente: '', telefonoCliente: '' })
+  const [perfilesDisp, setPerfilesDisp] = useState([])
+  const [perfilSel, setPerfilSel] = useState(null)
+  const [loadingPerfiles, setLoadingPerfiles] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const set = (k, v) => { setForm(p => ({...p,[k]:v})); setError('') }
 
+  const esConPerfiles = tienePerfiles(form.cuenta)
+
+  // Cuando cambia cuenta o vinculada, cargar perfiles disponibles
+  useEffect(() => {
+    if (!form.cuenta || !esConPerfiles) { setPerfilesDisp([]); setPerfilSel(null); return }
+    async function cargarPerfiles() {
+      setLoadingPerfiles(true); setPerfilSel(null)
+      const { data } = await supabase
+        .from('perfiles_espacios')
+        .select('*, cuentas_maestras(servicio, vinculada, correo, password)')
+        .is('servicio_id', null) // solo los disponibles (sin servicio asignado)
+        .filter('cuentas_maestras.servicio', 'ilike', `%${form.cuenta.split(' ')[0]}%`)
+      // Filtrar por vinculada si está seleccionada
+      const filtrados = (data || []).filter(p => {
+        const cm = p.cuentas_maestras
+        if (!cm) return false
+        if (form.vinculada && cm.vinculada !== form.vinculada) return false
+        const esDisp = !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE'
+        return esDisp
+      })
+      setPerfilesDisp(filtrados)
+      setLoadingPerfiles(false)
+    }
+    cargarPerfiles()
+  }, [form.cuenta, form.vinculada, esConPerfiles])
+
   async function guardar() {
     if (!form.nombre.trim() && !clienteId) return setError('El nombre es obligatorio')
     if (!form.cuenta.trim()) return setError('El servicio es obligatorio')
-    if (!form.fecha.trim()) return setError('La fecha es obligatoria')
-    const fechaISO = form.fecha.includes('/') ? parseFechaInput(form.fecha) : form.fecha
-    if (!fechaISO) return setError('Fecha inválida')
+    if (!form.fecha) return setError('La fecha es obligatoria')
+    if (esConPerfiles && !perfilSel) return setError('Selecciona un perfil disponible')
     setSaving(true); setError('')
     try {
+      // Obtener o crear cliente
       let cId = clienteId
       if (!cId) {
-        // Buscar cliente existente o crear nuevo
         const { data: existing } = await supabase.from('clientes').select('id').eq('nombre', form.nombre.trim()).single()
-        if (existing) {
-          cId = existing.id
-        } else {
+        if (existing) { cId = existing.id }
+        else {
           const { data: nuevo, error: e } = await supabase.from('clientes').insert({ nombre: form.nombre.trim(), telefono: form.tel || null }).select().single()
           if (e) throw e
           cId = nuevo.id
         }
       }
-      const { error: e2 } = await supabase.from('servicios').insert({
-        cliente_id: cId, cuenta: form.cuenta.trim(),
+
+      // Crear el servicio
+      const { data: svcData, error: e2 } = await supabase.from('servicios').insert({
+        cliente_id: cId,
+        cuenta: form.cuenta.trim(),
         vinculada: form.vinculada || null,
         precio: parseFloat(form.precio) || 0,
-        fecha_vencimiento: fechaISO,
+        fecha_vencimiento: form.fecha,
         notas: form.notas || null,
-        estado: 'PENDIENTE'
-      })
+        estado: 'PENDIENTE',
+        perfil_id: perfilSel?.id || null,
+      }).select().single()
       if (e2) throw e2
-      onGuardar()
-      onCerrar()
+
+      // Si tiene perfil, enlazarlo
+      if (perfilSel) {
+        await supabase.from('perfiles_espacios').update({
+          cliente_id: cId,
+          cliente_nombre: form.nombre.trim() || clienteNombre,
+          servicio_id: svcData.id,
+          fecha_vencimiento: form.fecha,
+          correo_cliente: form.correoCliente || null,
+          telefono_cliente: form.telefonoCliente || null,
+          notas: null, // ya no es DISPONIBLE
+        }).eq('id', perfilSel.id)
+      }
+
+      onGuardar(); onCerrar()
     } catch(e) { setError('Error al guardar: ' + e.message); setSaving(false) }
   }
 
@@ -341,6 +393,62 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId, clientes
         <label>SERVICIO / CUENTA *</label>
         <BuscadorServicio value={form.cuenta} onChange={v=>set('cuenta',v)} />
       </div>
+
+      {/* SELECTOR DE PERFIL — para servicios con perfiles */}
+      {form.cuenta && esConPerfiles && (
+        <div style={{marginBottom:14}}>
+          <label>PERFIL DISPONIBLE *</label>
+          {loadingPerfiles ? (
+            <div style={{fontSize:12,color:'var(--text3)',padding:'8px 0',fontFamily:'var(--mono)'}}>⏳ Buscando perfiles...</div>
+          ) : perfilesDisp.length === 0 ? (
+            <div style={{background:'#1a0800',border:'1px solid #ff8c0030',borderRadius:8,padding:'8px 12px',fontSize:12,color:'var(--orange)'}}>
+              ⚠️ No hay perfiles disponibles para {form.cuenta} {form.vinculada ? `en ${form.vinculada}` : ''}
+            </div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:5}}>
+              {perfilesDisp.map(p => {
+                const cm = p.cuentas_maestras
+                const sel = perfilSel?.id === p.id
+                return (
+                  <button key={p.id} onClick={()=>setPerfilSel(sel?null:p)} style={{
+                    background:sel?'rgba(0,212,255,0.12)':'var(--bg2)',
+                    border:`1px solid ${sel?'var(--cyan)':'var(--border)'}`,
+                    borderRadius:8,padding:'8px 12px',cursor:'pointer',textAlign:'left',
+                    transition:'all .15s',
+                  }}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div style={{width:28,height:28,borderRadius:6,background:sel?'rgba(0,212,255,0.2)':'var(--bg3)',border:`1px solid ${sel?'var(--cyan)':'var(--border)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:sel?'var(--cyan)':'var(--text2)',flexShrink:0}}>{p.perfil}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:12,fontWeight:700,color:sel?'var(--cyan)':'var(--text)',fontFamily:'var(--mono)'}}>{cm?.servicio} · {cm?.vinculada}</div>
+                        {cm?.correo && <div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>{cm.correo}</div>}
+                      </div>
+                      {p.pin && <div style={{background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:5,padding:'2px 7px',fontSize:11,fontWeight:700,color:'var(--yellow)',fontFamily:'var(--mono)'}}>{p.pin}</div>}
+                      {sel && <span style={{color:'var(--cyan)',fontSize:14}}>✓</span>}
+                    </div>
+                    {cm?.password && sel && (
+                      <div style={{marginTop:6,fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>🔑 {cm.password}</div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* CAMPOS PARA CUENTA INDIVIDUAL (Spotify, YouTube, Office...) */}
+      {form.cuenta && !esConPerfiles && (
+        <div style={{marginBottom:14}}>
+          <label>CORREO / USUARIO DEL CLIENTE</label>
+          <input value={form.correoCliente} onChange={e=>set('correoCliente',e.target.value)}
+            placeholder="Ej: cliente@gmail.com" style={{fontFamily:'var(--mono)'}} />
+          <div style={{marginTop:6}}>
+            <label>TELÉFONO EN LA CUENTA (si aplica)</label>
+            <input value={form.telefonoCliente} onChange={e=>set('telefonoCliente',e.target.value)}
+              placeholder="Ej: 6641234567" type="tel" style={{fontFamily:'var(--mono)'}} />
+          </div>
+        </div>
+      )}
 
       <div style={{marginBottom:14}}>
         <label>PRECIO (MXN)</label>
@@ -860,19 +968,38 @@ function App({ sesion, onLogout }) {
     if (!e) cargarDatos()
   }
 
+  async function liberarPerfil(s) {
+    // Si el servicio tiene perfil asignado, liberarlo
+    if (s.perfil_id) {
+      await supabase.from('perfiles_espacios').update({
+        cliente_id: null,
+        cliente_nombre: null,
+        servicio_id: null,
+        fecha_vencimiento: null,
+        correo_cliente: null,
+        telefono_cliente: null,
+        notas: 'DISPONIBLE',
+      }).eq('id', s.perfil_id)
+    }
+  }
+
   async function cancelar(s) {
+    await liberarPerfil(s)
     const notas = s.notas ? 'CANCELADO | ' + s.notas : 'CANCELADO'
-    const { error: e } = await supabase.from('servicios').update({ notas }).eq('id', s.id)
+    const { error: e } = await supabase.from('servicios').update({ notas, cancelado: true, perfil_id: null }).eq('id', s.id)
     if (!e) cargarDatos()
   }
 
   async function eliminarServicio(s) {
+    await liberarPerfil(s)
     const { error: e } = await supabase.from('servicios').delete().eq('id', s.id)
     if (!e) cargarDatos()
   }
 
-  async function eliminarCliente(clienteId, serviciosIds) {
-    await supabase.from('servicios').delete().in('id', serviciosIds)
+  async function eliminarCliente(clienteId, serviciosLista) {
+    // Liberar todos los perfiles del cliente antes de eliminar
+    for (const s of serviciosLista) await liberarPerfil(s)
+    await supabase.from('servicios').delete().in('id', serviciosLista.map(s=>s.id))
     await supabase.from('clientes').delete().eq('id', clienteId)
     cargarDatos()
   }
@@ -1143,7 +1270,7 @@ function App({ sesion, onLogout }) {
                       mensaje:'¿Eliminar cliente?',
                       detalle:`Se eliminarán todos los servicios de ${cliente.nombre}.`,
                       textoBtn:'Eliminar todo',
-                      onConfirmar:()=>{eliminarCliente(cliente.id,servicios.map(s=>s.id));setModalConfirm(null)}
+                      onConfirmar:()=>{eliminarCliente(cliente.id,servicios);setModalConfirm(null)}
                     })}>🗑️</button>
                 )}
               </div>
@@ -1232,16 +1359,19 @@ function CuentasView() {
   const [editVal, setEditVal] = useState('')
   const [buscar, setBuscar] = useState('')
   const [filtroSvc, setFiltroSvc] = useState('')
-  const [agregando, setAgregando] = useState(null) // cuenta_id donde se agrega perfil
+  const [agregandoPerfil, setAgregandoPerfil] = useState(null)
   const [nuevoPerfil, setNuevoPerfil] = useState({perfil:'',pin:'',cliente:''})
+  const [agregandoCuenta, setAgregandoCuenta] = useState(false)
+  const [nuevaCuenta, setNuevaCuenta] = useState({servicio:'',vinculada:'',correo:'',password:'',tipo:'perfiles'})
+  const [confirm, setConfirm] = useState(null)
 
   const cargar = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('cuentas_maestras')
       .select('*, perfiles_espacios(*)')
       .order('servicio')
-    if (!error) setCuentas(data || [])
+    if (data) setCuentas(data)
     setLoading(false)
   }, [])
 
@@ -1263,8 +1393,7 @@ function CuentasView() {
       cliente_nombre: val,
       notas: val ? null : 'DISPONIBLE'
     }).eq('id', perfilId)
-    setEditando(null)
-    cargar()
+    setEditando(null); cargar()
   }
 
   async function agregarPerfil(cuentaId) {
@@ -1276,26 +1405,132 @@ function CuentasView() {
       cliente_nombre: nuevoPerfil.cliente.trim() || null,
       notas: nuevoPerfil.cliente.trim() ? null : 'DISPONIBLE',
     })
-    setAgregando(null)
-    setNuevoPerfil({perfil:'',pin:'',cliente:''})
+    setAgregandoPerfil(null); setNuevoPerfil({perfil:'',pin:'',cliente:''}); cargar()
+  }
+
+  async function eliminarPerfil(p) {
+    // Si está ocupado, confirmar antes
+    if (p.cliente_nombre && p.cliente_nombre.toUpperCase() !== 'DISPONIBLE') {
+      setConfirm({
+        msg: `¿Eliminar perfil ${p.perfil}?`,
+        detalle: `Está asignado a ${p.cliente_nombre}. El servicio del cliente también se liberará.`,
+        onOk: async () => {
+          // Liberar servicio del cliente si existe
+          if (p.servicio_id) {
+            await supabase.from('servicios').update({ perfil_id: null }).eq('id', p.servicio_id)
+          }
+          await supabase.from('perfiles_espacios').delete().eq('id', p.id)
+          setConfirm(null); cargar()
+        }
+      })
+    } else {
+      await supabase.from('perfiles_espacios').delete().eq('id', p.id)
+      cargar()
+    }
+  }
+
+  async function agregarCuenta() {
+    if (!nuevaCuenta.servicio.trim()) return
+    await supabase.from('cuentas_maestras').insert({
+      servicio: nuevaCuenta.servicio.trim(),
+      vinculada: nuevaCuenta.vinculada.trim() || null,
+      correo: nuevaCuenta.correo.trim() || null,
+      password: nuevaCuenta.password.trim() || null,
+      tipo: nuevaCuenta.tipo,
+    })
+    setAgregandoCuenta(false)
+    setNuevaCuenta({servicio:'',vinculada:'',correo:'',password:'',tipo:'perfiles'})
     cargar()
   }
 
-  async function eliminarPerfil(perfilId) {
-    await supabase.from('perfiles_espacios').delete().eq('id', perfilId)
-    cargar()
+  async function eliminarCuenta(cuenta) {
+    const ocupados = (cuenta.perfiles_espacios||[]).filter(p => p.cliente_nombre && p.cliente_nombre.toUpperCase() !== 'DISPONIBLE')
+    setConfirm({
+      msg: `¿Eliminar cuenta ${cuenta.servicio}?`,
+      detalle: ocupados.length > 0
+        ? `⚠️ Tiene ${ocupados.length} perfil(es) ocupado(s). Se liberarán los servicios de esos clientes.`
+        : `Se eliminarán todos los perfiles de esta cuenta.`,
+      onOk: async () => {
+        // Liberar servicios de clientes asociados
+        for (const p of ocupados) {
+          if (p.servicio_id) await supabase.from('servicios').update({ perfil_id: null }).eq('id', p.servicio_id)
+        }
+        await supabase.from('perfiles_espacios').delete().eq('cuenta_id', cuenta.id)
+        await supabase.from('cuentas_maestras').delete().eq('id', cuenta.id)
+        setConfirm(null); cargar()
+      }
+    })
   }
 
   if (loading) return <div style={{textAlign:'center',padding:'60px 0',color:'var(--text3)'}}>⏳ Cargando cuentas...</div>
 
   return (
     <div style={{maxWidth:520,margin:'0 auto',padding:'14px 16px 0'}}>
-      {/* Buscador */}
-      <div style={{position:'relative',marginBottom:8}}>
-        <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:13}}>🔍</span>
-        <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar servicio, vinculada o cliente..."
-          style={{...inputSt,paddingLeft:36}}/>
+
+      {/* Modal confirm interno */}
+      {confirm && (
+        <div style={{position:'fixed',inset:0,background:'#000000dd',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div className="card slide-up" style={{padding:24,maxWidth:340,width:'100%',textAlign:'center'}}>
+            <div style={{fontSize:36,marginBottom:12}}>⚠️</div>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:8}}>{confirm.msg}</div>
+            <div style={{fontSize:12,color:'var(--text2)',marginBottom:20,lineHeight:1.6}}>{confirm.detalle}</div>
+            <div style={{display:'flex',gap:10}}>
+              <button className="btn btn-ghost" style={{flex:1,justifyContent:'center'}} onClick={()=>setConfirm(null)}>Cancelar</button>
+              <button className="btn" style={{flex:1,justifyContent:'center',background:'var(--red)',color:'#fff'}} onClick={confirm.onOk}>Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Buscador + botón nueva cuenta */}
+      <div style={{display:'flex',gap:8,marginBottom:8}}>
+        <div style={{position:'relative',flex:1}}>
+          <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:13}}>🔍</span>
+          <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar servicio, vinculada o cliente..."
+            style={{...inputSt,paddingLeft:36}}/>
+        </div>
+        <button onClick={()=>setAgregandoCuenta(!agregandoCuenta)} style={{
+          background:agregandoCuenta?'rgba(0,212,255,0.15)':'var(--bg2)',
+          border:`1px solid ${agregandoCuenta?'var(--cyan)':'var(--border)'}`,
+          color:agregandoCuenta?'var(--cyan)':'var(--text3)',
+          borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:11,fontWeight:700,flexShrink:0,
+        }}>{agregandoCuenta?'✕ Cancelar':'+ Cuenta'}</button>
       </div>
+
+      {/* Form nueva cuenta maestra */}
+      {agregandoCuenta && (
+        <div style={{background:'var(--bg1)',border:'1px solid var(--cyan)30',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
+          <div style={{fontSize:10,color:'var(--cyan)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:10}}>NUEVA CUENTA MAESTRA</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+            <div><label style={{fontSize:9}}>SERVICIO *</label>
+              <input value={nuevaCuenta.servicio} onChange={e=>setNuevaCuenta(p=>({...p,servicio:e.target.value}))} placeholder="Netflix, Spotify..." style={{...inputSt,padding:'6px 10px',fontSize:12}}/></div>
+            <div><label style={{fontSize:9}}>VINCULADA</label>
+              <input value={nuevaCuenta.vinculada} onChange={e=>setNuevaCuenta(p=>({...p,vinculada:e.target.value}))} placeholder="SIX, LALOBIT..." style={{...inputSt,padding:'6px 10px',fontSize:12}}/></div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+            <div><label style={{fontSize:9}}>CORREO</label>
+              <input value={nuevaCuenta.correo} onChange={e=>setNuevaCuenta(p=>({...p,correo:e.target.value}))} placeholder="cuenta@mail.com" style={{...inputSt,padding:'6px 10px',fontSize:12}}/></div>
+            <div><label style={{fontSize:9}}>CONTRASEÑA</label>
+              <input value={nuevaCuenta.password} onChange={e=>setNuevaCuenta(p=>({...p,password:e.target.value}))} placeholder="••••••••" style={{...inputSt,padding:'6px 10px',fontSize:12,fontFamily:'var(--mono)'}}/></div>
+          </div>
+          <div style={{marginBottom:10}}>
+            <label style={{fontSize:9}}>TIPO</label>
+            <div style={{display:'flex',gap:6}}>
+              {['perfiles','individual'].map(t=>(
+                <button key={t} onClick={()=>setNuevaCuenta(p=>({...p,tipo:t}))} style={{
+                  padding:'4px 12px',borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:700,
+                  background:nuevaCuenta.tipo===t?'rgba(0,212,255,0.15)':'var(--bg2)',
+                  border:`1px solid ${nuevaCuenta.tipo===t?'var(--cyan)':'var(--border)'}`,
+                  color:nuevaCuenta.tipo===t?'var(--cyan)':'var(--text3)',
+                }}>{t==='perfiles'?'Con perfiles':'Individual'}</button>
+              ))}
+            </div>
+          </div>
+          <button onClick={agregarCuenta} style={{background:'var(--cyan)',color:'var(--bg)',border:'none',borderRadius:8,padding:'8px',cursor:'pointer',fontSize:12,fontWeight:700,width:'100%'}}>
+            ✓ Agregar cuenta
+          </button>
+        </div>
+      )}
 
       {/* Filtros por servicio */}
       <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:12,paddingBottom:2}}>
@@ -1310,7 +1545,7 @@ function CuentasView() {
         const perfiles = (cuenta.perfiles_espacios || []).sort((a,b) => String(a.perfil).localeCompare(String(b.perfil), undefined, {numeric:true}))
         const disponibles = perfiles.filter(p => !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE').length
         const total = perfiles.length
-        const estaAgregando = agregando === cuenta.id
+        const estaAgregando = agregandoPerfil === cuenta.id
 
         return (
           <div key={cuenta.id} style={{background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:14,padding:'14px 16px',marginBottom:10}}>
@@ -1318,109 +1553,113 @@ function CuentasView() {
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
               <div style={{flex:1}}>
                 <div style={{fontWeight:800,fontSize:15,letterSpacing:'-0.01em'}}>{cuenta.servicio}</div>
-                <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
+                <div style={{fontSize:11,color:'var(--text3)',marginTop:2,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
                   <span style={{background:'rgba(167,139,250,0.12)',color:'var(--purple)',padding:'1px 7px',borderRadius:5,fontSize:10,fontWeight:600}}>{cuenta.vinculada}</span>
-                  {cuenta.correo && <span style={{marginLeft:6,color:'var(--text3)'}}>{cuenta.correo}</span>}
+                  {cuenta.correo && <span style={{fontFamily:'var(--mono)',fontSize:10}}>{cuenta.correo}</span>}
+                  {cuenta.password && <span style={{fontFamily:'var(--mono)',fontSize:10,color:'var(--text3)'}}>🔑 {cuenta.password}</span>}
                 </div>
               </div>
-              <div style={{textAlign:'right',marginRight:6}}>
-                <div style={{fontSize:12,fontWeight:700,color:disponibles>0?'var(--green)':'var(--text3)'}}>
+              <div style={{textAlign:'right',marginRight:4}}>
+                <div style={{fontSize:12,fontWeight:700,color:disponibles>0?'var(--green)':'var(--red)'}}>
                   {disponibles} libre{disponibles!==1?'s':''}
                 </div>
-                <div style={{fontSize:10,color:'var(--text3)'}}>{total - disponibles}/{total} ocupados</div>
+                <div style={{fontSize:10,color:'var(--text3)'}}>{total-disponibles}/{total} ocupados</div>
               </div>
-              {/* Botón agregar perfil */}
-              <button onClick={()=>{ setAgregando(estaAgregando?null:cuenta.id); setNuevoPerfil({perfil:'',pin:'',cliente:''}) }}
-                style={{background:estaAgregando?'rgba(0,212,255,0.15)':'var(--bg2)',border:`1px solid ${estaAgregando?'var(--cyan)':'var(--border)'}`,color:estaAgregando?'var(--cyan)':'var(--text3)',borderRadius:8,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,flexShrink:0}}>
-                {estaAgregando?'✕':'+ Perfil'}
+              <button onClick={()=>setAgregandoPerfil(estaAgregando?null:cuenta.id)}
+                style={{background:estaAgregando?'rgba(0,212,255,0.15)':'var(--bg2)',border:`1px solid ${estaAgregando?'var(--cyan)':'var(--border)'}`,color:estaAgregando?'var(--cyan)':'var(--text3)',borderRadius:7,padding:'3px 8px',cursor:'pointer',fontSize:10,fontWeight:700,flexShrink:0}}>
+                {estaAgregando?'✕':'+'}
               </button>
+              <button onClick={()=>eliminarCuenta(cuenta)}
+                style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:13,padding:'2px 4px',opacity:0.5,flexShrink:0}}>🗑️</button>
             </div>
 
             {/* Form agregar perfil */}
             {estaAgregando && (
-              <div style={{background:'var(--bg2)',border:'1px solid var(--cyan)22',borderRadius:10,padding:'10px 12px',marginBottom:10}}>
-                <div style={{fontSize:10,color:'var(--cyan)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>NUEVO PERFIL</div>
+              <div style={{background:'var(--bg2)',border:'1px solid #00d4ff20',borderRadius:10,padding:'10px 12px',marginBottom:10}}>
+                <div style={{fontSize:9,color:'var(--cyan)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>NUEVO PERFIL</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:6}}>
-                  <div>
-                    <label style={{fontSize:9}}>PERFIL *</label>
-                    <input value={nuevoPerfil.perfil} onChange={e=>setNuevoPerfil(p=>({...p,perfil:e.target.value}))}
-                      placeholder="Ej: 1, A, Admin" style={{...inputSt,padding:'6px 10px',fontSize:12}}/>
-                  </div>
-                  <div>
-                    <label style={{fontSize:9}}>PIN</label>
-                    <input value={nuevoPerfil.pin} onChange={e=>setNuevoPerfil(p=>({...p,pin:e.target.value}))}
-                      placeholder="Opcional" style={{...inputSt,padding:'6px 10px',fontSize:12,fontFamily:'var(--mono)'}}/>
-                  </div>
-                </div>
-                <div style={{marginBottom:8}}>
-                  <label style={{fontSize:9}}>CLIENTE (dejar vacío = DISPONIBLE)</label>
-                  <input value={nuevoPerfil.cliente} onChange={e=>setNuevoPerfil(p=>({...p,cliente:e.target.value}))}
-                    placeholder="Nombre del cliente..." style={{...inputSt,padding:'6px 10px',fontSize:12}}/>
+                  <div><label style={{fontSize:9}}>PERFIL *</label>
+                    <input value={nuevoPerfil.perfil} onChange={e=>setNuevoPerfil(p=>({...p,perfil:e.target.value}))} placeholder="1, A, Extra" style={{...inputSt,padding:'5px 8px',fontSize:11}}/></div>
+                  <div><label style={{fontSize:9}}>PIN</label>
+                    <input value={nuevoPerfil.pin} onChange={e=>setNuevoPerfil(p=>({...p,pin:e.target.value}))} placeholder="Opcional" style={{...inputSt,padding:'5px 8px',fontSize:11,fontFamily:'var(--mono)'}}/></div>
                 </div>
                 <button onClick={()=>agregarPerfil(cuenta.id)}
-                  style={{background:'var(--cyan)',color:'var(--bg)',border:'none',borderRadius:8,padding:'6px 16px',cursor:'pointer',fontSize:12,fontWeight:700,width:'100%'}}>
-                  ✓ Agregar perfil
+                  style={{background:'var(--cyan)',color:'var(--bg)',border:'none',borderRadius:7,padding:'5px',cursor:'pointer',fontSize:11,fontWeight:700,width:'100%'}}>
+                  ✓ Agregar perfil disponible
                 </button>
               </div>
             )}
 
             {/* Perfiles */}
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            <div style={{display:'flex',flexDirection:'column',gap:5}}>
               {perfiles.map(p => {
                 const esDisponible = !p.cliente_nombre || p.cliente_nombre.toUpperCase()==='DISPONIBLE' || (p.notas||'').toUpperCase()==='DISPONIBLE'
                 const isEditando = editando === p.id
+                const diasRestantes_ = p.fecha_vencimiento ? diasRestantes(p.fecha_vencimiento) : null
+                const urg = diasRestantes_ !== null && diasRestantes_ <= 3
 
                 return (
                   <div key={p.id} style={{
-                    background:'var(--bg2)',border:`1px solid ${esDisponible?'rgba(52,211,153,0.2)':'var(--border2)'}`,
-                    borderRadius:8,padding:'8px 10px',
-                    display:'flex',alignItems:'center',gap:8,
+                    background:'var(--bg2)',
+                    border:`1px solid ${esDisponible?'rgba(52,211,153,0.2)':urg?'rgba(255,51,102,0.3)':'var(--border2)'}`,
+                    borderRadius:8,padding:'7px 10px',display:'flex',alignItems:'center',gap:8,
                   }}>
-                    {/* Perfil # */}
+                    {/* Número perfil */}
                     <div style={{
-                      minWidth:32,height:32,borderRadius:6,
-                      background:esDisponible?'rgba(52,211,153,0.1)':'var(--bg1)',
-                      border:`1px solid ${esDisponible?'rgba(52,211,153,0.3)':'var(--border)'}`,
+                      minWidth:30,height:30,borderRadius:6,flexShrink:0,
+                      background:esDisponible?'rgba(52,211,153,0.1)':urg?'rgba(255,51,102,0.1)':'var(--bg1)',
+                      border:`1px solid ${esDisponible?'rgba(52,211,153,0.3)':urg?'rgba(255,51,102,0.4)':'var(--border)'}`,
                       display:'flex',alignItems:'center',justifyContent:'center',
-                      fontSize:11,fontWeight:800,color:esDisponible?'var(--green)':'var(--text2)',
-                      flexShrink:0,
+                      fontSize:10,fontWeight:800,
+                      color:esDisponible?'var(--green)':urg?'var(--red)':'var(--text2)',
                     }}>{p.perfil}</div>
 
                     {/* Info */}
                     <div style={{flex:1,minWidth:0}}>
                       {isEditando ? (
-                        <div style={{display:'flex',gap:6}}>
+                        <div style={{display:'flex',gap:5}}>
                           <input value={editVal} onChange={e=>setEditVal(e.target.value)}
                             onKeyDown={e=>{ if(e.key==='Enter') guardarCliente(p.id,editVal); if(e.key==='Escape') setEditando(null) }}
                             placeholder="Nombre del cliente..." autoFocus
-                            style={{...inputSt,padding:'4px 8px',fontSize:12,flex:1}}/>
-                          <button onClick={()=>guardarCliente(p.id,editVal)} style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700}}>✓</button>
-                          <button onClick={()=>setEditando(null)} style={{background:'var(--bg1)',color:'var(--text3)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',cursor:'pointer',fontSize:11}}>✕</button>
+                            style={{...inputSt,padding:'3px 7px',fontSize:11,flex:1}}/>
+                          <button onClick={()=>guardarCliente(p.id,editVal)} style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:5,padding:'3px 8px',cursor:'pointer',fontSize:11,fontWeight:700}}>✓</button>
+                          <button onClick={()=>setEditando(null)} style={{background:'var(--bg1)',color:'var(--text3)',border:'1px solid var(--border)',borderRadius:5,padding:'3px 7px',cursor:'pointer',fontSize:11}}>✕</button>
                         </div>
                       ) : (
-                        <div style={{display:'flex',alignItems:'center',gap:6}}>
-                          <span style={{fontSize:13,fontWeight:esDisponible?400:600,color:esDisponible?'var(--green)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                            {esDisponible ? 'DISPONIBLE' : p.cliente_nombre}
-                          </span>
-                          {p.notas && !esDisponible && <span style={{fontSize:10,color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>· {p.notas}</span>}
+                        <div>
+                          <div style={{display:'flex',alignItems:'center',gap:5}}>
+                            <span style={{fontSize:12,fontWeight:esDisponible?400:600,color:esDisponible?'var(--green)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                              {esDisponible ? 'DISPONIBLE' : p.cliente_nombre}
+                            </span>
+                            {/* Días restantes */}
+                            {!esDisponible && diasRestantes_ !== null && (
+                              <BadgeDias d={diasRestantes_} />
+                            )}
+                          </div>
+                          {/* Correo/teléfono del cliente */}
+                          {!esDisponible && (p.correo_cliente || p.telefono_cliente) && (
+                            <div style={{fontSize:10,color:'var(--text3)',marginTop:1,fontFamily:'var(--mono)'}}>
+                              {p.correo_cliente} {p.telefono_cliente && `· ${p.telefono_cliente}`}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
 
                     {/* PIN */}
                     {p.pin && (
-                      <div style={{flexShrink:0,background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:6,padding:'3px 8px',fontSize:11,fontWeight:700,color:'var(--yellow)',fontFamily:'var(--mono)',letterSpacing:'0.05em'}}>
+                      <div style={{flexShrink:0,background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:5,padding:'2px 7px',fontSize:10,fontWeight:700,color:'var(--yellow)',fontFamily:'var(--mono)'}}>
                         {p.pin}
                       </div>
                     )}
 
-                    {/* Editar + Eliminar */}
+                    {/* Acciones */}
                     {!isEditando && (
-                      <div style={{display:'flex',gap:4,flexShrink:0}}>
+                      <div style={{display:'flex',gap:3,flexShrink:0}}>
                         <button onClick={()=>{ setEditando(p.id); setEditVal(esDisponible?'':p.cliente_nombre||'') }}
-                          style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:14,padding:'2px 4px'}}>✏️</button>
-                        <button onClick={()=>eliminarPerfil(p.id)}
-                          style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:13,padding:'2px 4px',opacity:0.6}}>🗑️</button>
+                          style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:13,padding:'1px 3px'}}>✏️</button>
+                        <button onClick={()=>eliminarPerfil(p)}
+                          style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:12,padding:'1px 3px',opacity:0.5}}>🗑️</button>
                       </div>
                     )}
                   </div>
