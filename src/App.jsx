@@ -271,10 +271,31 @@ function BuscadorServicio({ value, onChange }) {
 
 // ─── SERVICIOS QUE USAN PERFILES vs INDIVIDUALES ──────────
 const SERVICIOS_CON_PERFILES = ['Netflix','Netflix extra','Netflix genérico','Disney 4K','Disney HD','HBO HD','HBO 4K','HBO PLATINO','MAX']
-const SERVICIOS_INDIVIDUALES = ['Spotify','Spotify 3','YouTube','Youtubep1','Youtubep3','Office','Office3','Office12','Apple TV','APPLE ONE','ChatGPT gen','ChatGPT+','Canva1','Canva12','PRIME','Paramount','VIX','Crunchyroll']
 
 function tienePerfiles(cuenta) {
   return SERVICIOS_CON_PERFILES.some(s => cuenta.toLowerCase().includes(s.toLowerCase()))
+}
+
+function placeholderAcceso(cuenta) {
+  const c = cuenta.toLowerCase()
+  if (c.includes('spotify'))  return 'Correo o teléfono registrado en Spotify'
+  if (c.includes('youtube') || c.includes('youtubep')) return 'Correo de Google del cliente'
+  if (c.includes('office'))   return 'Correo de Microsoft del cliente'
+  if (c.includes('apple') || c.includes('icloud')) return 'Apple ID del cliente'
+  if (c.includes('chatgpt'))  return 'Correo de OpenAI del cliente'
+  if (c.includes('canva'))    return 'Correo de Canva del cliente'
+  if (c.includes('prime'))    return 'Correo de Amazon del cliente'
+  if (c.includes('paramount')) return 'Correo de Paramount del cliente'
+  if (c.includes('vix'))      return 'Correo o teléfono en VIX'
+  return 'Correo, usuario o teléfono del cliente'
+}
+
+function labelAcceso(cuenta) {
+  const c = cuenta.toLowerCase()
+  if (c.includes('spotify') || c.includes('youtube') || c.includes('youtubep')) return 'CUENTA DEL CLIENTE'
+  if (c.includes('office') || c.includes('chatgpt') || c.includes('canva')) return 'CORREO DEL CLIENTE'
+  if (c.includes('apple')) return 'APPLE ID DEL CLIENTE'
+  return 'ACCESO DEL CLIENTE'
 }
 
 // ─── MODAL NUEVO/AGREGAR SERVICIO ─────────────────────────
@@ -342,6 +363,7 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
         notas: form.notas || null,
         estado: 'PENDIENTE',
         perfil_id: perfilSel?.id || null,
+        acceso_cliente: form.accesoCliente || null,
       }).select().single()
       if (e2) throw e2
 
@@ -352,9 +374,8 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
           cliente_nombre: form.nombre.trim() || clienteNombre,
           servicio_id: svcData.id,
           fecha_vencimiento: form.fecha,
-          correo_cliente: form.correoCliente || null,
-          telefono_cliente: form.telefonoCliente || null,
-          notas: null, // ya no es DISPONIBLE
+          correo_cliente: form.accesoCliente || null,
+          notas: null,
         }).eq('id', perfilSel.id)
       }
 
@@ -413,8 +434,7 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
                   <button key={p.id} onClick={()=>setPerfilSel(sel?null:p)} style={{
                     background:sel?'rgba(0,212,255,0.12)':'var(--bg2)',
                     border:`1px solid ${sel?'var(--cyan)':'var(--border)'}`,
-                    borderRadius:8,padding:'8px 12px',cursor:'pointer',textAlign:'left',
-                    transition:'all .15s',
+                    borderRadius:8,padding:'8px 12px',cursor:'pointer',textAlign:'left',transition:'all .15s',
                   }}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <div style={{width:28,height:28,borderRadius:6,background:sel?'rgba(0,212,255,0.2)':'var(--bg3)',border:`1px solid ${sel?'var(--cyan)':'var(--border)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:sel?'var(--cyan)':'var(--text2)',flexShrink:0}}>{p.perfil}</div>
@@ -436,17 +456,21 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
         </div>
       )}
 
-      {/* CAMPOS PARA CUENTA INDIVIDUAL (Spotify, YouTube, Office...) */}
-      {form.cuenta && !esConPerfiles && (
+      {/* ACCESO DEL CLIENTE — aparece para todos los servicios cuando hay cuenta seleccionada */}
+      {form.cuenta && (
         <div style={{marginBottom:14}}>
-          <label>CORREO / USUARIO DEL CLIENTE</label>
-          <input value={form.correoCliente} onChange={e=>set('correoCliente',e.target.value)}
-            placeholder="Ej: cliente@gmail.com" style={{fontFamily:'var(--mono)'}} />
-          <div style={{marginTop:6}}>
-            <label>TELÉFONO EN LA CUENTA (si aplica)</label>
-            <input value={form.telefonoCliente} onChange={e=>set('telefonoCliente',e.target.value)}
-              placeholder="Ej: 6641234567" type="tel" style={{fontFamily:'var(--mono)'}} />
-          </div>
+          <label>{labelAcceso(form.cuenta)}</label>
+          <input
+            value={form.accesoCliente||''}
+            onChange={e=>set('accesoCliente',e.target.value)}
+            placeholder={placeholderAcceso(form.cuenta)}
+            style={{fontFamily:'var(--mono)'}}
+          />
+          {!esConPerfiles && (
+            <div style={{fontSize:10,color:'var(--text3)',marginTop:4}}>
+              💡 Este dato se guardará para identificar al cliente en la cuenta
+            </div>
+          )}
         </div>
       )}
 
@@ -499,6 +523,10 @@ function ModalCobrarRenovar({ servicio, cliente, onGuardar, onCerrar }) {
         notas: notas ? (servicio.notas ? servicio.notas + ' | ' + notas : notas) : servicio.notas,
       }).eq('id', servicio.id)
       if (e) throw e
+      // Sincronizar fecha en el perfil enlazado
+      if (servicio.perfil_id) {
+        await supabase.from('perfiles_espacios').update({ fecha_vencimiento: fecha }).eq('id', servicio.perfil_id)
+      }
       onGuardar(); onCerrar()
     } catch(e) { setError('Error: ' + e.message); setSaving(false) }
   }
@@ -554,6 +582,10 @@ function ModalRenovar({ servicio, cliente, onRenovar, onCerrar }) {
       if (notas) updates.notas = servicio.notas ? servicio.notas + ' | ' + notas : notas
       const { error: e } = await supabase.from('servicios').update(updates).eq('id', servicio.id)
       if (e) throw e
+      // Sincronizar fecha en el perfil enlazado
+      if (servicio.perfil_id) {
+        await supabase.from('perfiles_espacios').update({ fecha_vencimiento: fecha }).eq('id', servicio.perfil_id)
+      }
       onRenovar(); onCerrar()
     } catch(e) { setError('Error: ' + e.message); setSaving(false) }
   }
@@ -1307,6 +1339,10 @@ function App({ sesion, onLogout }) {
                         {s.notas && esAdmin && (
                           <div style={{fontSize:10,color:'var(--text3)',marginBottom:4,paddingLeft:2}}>📝 {s.notas}</div>
                         )}
+                        {/* Acceso del cliente */}
+                        {s.acceso_cliente && esAdmin && (
+                          <div style={{fontSize:10,color:'var(--cyan)',marginBottom:4,paddingLeft:2,fontFamily:'var(--mono)'}}>👤 {s.acceso_cliente}</div>
+                        )}
                         {/* Botones admin — iconos compactos */}
                         {esAdmin && (
                           <div style={{display:'flex',gap:4,alignItems:'center'}}>
@@ -1367,11 +1403,51 @@ function CuentasView() {
 
   const cargar = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data: cuentasData } = await supabase
       .from('cuentas_maestras')
       .select('*, perfiles_espacios(*)')
       .order('servicio')
-    if (data) setCuentas(data)
+
+    if (!cuentasData) { setLoading(false); return }
+
+    // Para perfiles sin fecha_vencimiento, buscar el servicio del cliente por nombre
+    const clientesNombres = [...new Set(
+      cuentasData.flatMap(c => (c.perfiles_espacios||[]))
+        .filter(p => p.cliente_nombre && p.cliente_nombre.toUpperCase() !== 'DISPONIBLE' && !p.fecha_vencimiento)
+        .map(p => p.cliente_nombre.trim())
+    )]
+
+    let serviciosMap = {}
+    if (clientesNombres.length > 0) {
+      const { data: svsData } = await supabase
+        .from('servicios')
+        .select('id, cuenta, fecha_vencimiento, cliente_id, clientes(nombre)')
+        .eq('cancelado', false)
+        .in('clientes.nombre', clientesNombres)
+
+      // Mapear por nombre de cliente
+      for (const s of (svsData || [])) {
+        const nom = s.clientes?.nombre
+        if (!nom) continue
+        if (!serviciosMap[nom]) serviciosMap[nom] = []
+        serviciosMap[nom].push(s)
+      }
+    }
+
+    // Enriquecer perfiles con fecha del servicio si no tienen
+    const enriquecidas = cuentasData.map(c => ({
+      ...c,
+      perfiles_espacios: (c.perfiles_espacios || []).map(p => {
+        if (p.fecha_vencimiento || !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE') return p
+        const svs = serviciosMap[p.cliente_nombre.trim()] || []
+        // Buscar servicio que coincida con el tipo de cuenta
+        const match = svs.find(s => s.cuenta.toLowerCase().includes(c.servicio.toLowerCase().split(' ')[0]))
+          || svs.sort((a,b) => new Date(b.fecha_vencimiento) - new Date(a.fecha_vencimiento))[0]
+        return { ...p, fecha_vencimiento_calc: match?.fecha_vencimiento || null, servicio_id_calc: match?.id || null }
+      })
+    }))
+
+    setCuentas(enriquecidas)
     setLoading(false)
   }, [])
 
@@ -1387,11 +1463,17 @@ function CuentasView() {
     return okSvc && okQ
   })
 
-  async function guardarCliente(perfilId, nuevoCliente) {
+  async function guardarCliente(perfilId, nuevoCliente, perfilActual) {
     const val = nuevoCliente.trim() || null
+    // Si había un cliente anterior con servicio enlazado, liberar ese servicio
+    if (perfilActual?.servicio_id && val !== perfilActual.cliente_nombre) {
+      await supabase.from('servicios').update({ perfil_id: null }).eq('id', perfilActual.servicio_id)
+    }
     await supabase.from('perfiles_espacios').update({
       cliente_nombre: val,
-      notas: val ? null : 'DISPONIBLE'
+      cliente_id: null,
+      servicio_id: val ? perfilActual?.servicio_id : null,
+      notas: val ? null : 'DISPONIBLE',
     }).eq('id', perfilId)
     setEditando(null); cargar()
   }
@@ -1595,8 +1677,10 @@ function CuentasView() {
               {perfiles.map(p => {
                 const esDisponible = !p.cliente_nombre || p.cliente_nombre.toUpperCase()==='DISPONIBLE' || (p.notas||'').toUpperCase()==='DISPONIBLE'
                 const isEditando = editando === p.id
-                const diasRestantes_ = p.fecha_vencimiento ? diasRestantes(p.fecha_vencimiento) : null
+                const fechaFinal = p.fecha_vencimiento || p.fecha_vencimiento_calc || null
+                const diasRestantes_ = fechaFinal ? diasRestantes(fechaFinal) : null
                 const urg = diasRestantes_ !== null && diasRestantes_ <= 3
+                const sinEnlace = !esDisponible && !p.servicio_id && p.fecha_vencimiento_calc
 
                 return (
                   <div key={p.id} style={{
@@ -1619,15 +1703,15 @@ function CuentasView() {
                       {isEditando ? (
                         <div style={{display:'flex',gap:5}}>
                           <input value={editVal} onChange={e=>setEditVal(e.target.value)}
-                            onKeyDown={e=>{ if(e.key==='Enter') guardarCliente(p.id,editVal); if(e.key==='Escape') setEditando(null) }}
+                            onKeyDown={e=>{ if(e.key==='Enter') guardarCliente(p.id,editVal,p); if(e.key==='Escape') setEditando(null) }}
                             placeholder="Nombre del cliente..." autoFocus
                             style={{...inputSt,padding:'3px 7px',fontSize:11,flex:1}}/>
-                          <button onClick={()=>guardarCliente(p.id,editVal)} style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:5,padding:'3px 8px',cursor:'pointer',fontSize:11,fontWeight:700}}>✓</button>
+                          <button onClick={()=>guardarCliente(p.id,editVal,p)} style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:5,padding:'3px 8px',cursor:'pointer',fontSize:11,fontWeight:700}}>✓</button>
                           <button onClick={()=>setEditando(null)} style={{background:'var(--bg1)',color:'var(--text3)',border:'1px solid var(--border)',borderRadius:5,padding:'3px 7px',cursor:'pointer',fontSize:11}}>✕</button>
                         </div>
                       ) : (
                         <div>
-                          <div style={{display:'flex',alignItems:'center',gap:5}}>
+                          <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
                             <span style={{fontSize:12,fontWeight:esDisponible?400:600,color:esDisponible?'var(--green)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                               {esDisponible ? 'DISPONIBLE' : p.cliente_nombre}
                             </span>
@@ -1635,12 +1719,30 @@ function CuentasView() {
                             {!esDisponible && diasRestantes_ !== null && (
                               <BadgeDias d={diasRestantes_} />
                             )}
+                            {!esDisponible && diasRestantes_ === null && (
+                              <span style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)'}}>sin fecha</span>
+                            )}
                           </div>
                           {/* Correo/teléfono del cliente */}
                           {!esDisponible && (p.correo_cliente || p.telefono_cliente) && (
                             <div style={{fontSize:10,color:'var(--text3)',marginTop:1,fontFamily:'var(--mono)'}}>
                               {p.correo_cliente} {p.telefono_cliente && `· ${p.telefono_cliente}`}
                             </div>
+                          )}
+                          {/* Botón sincronizar si hay fecha calculada pero no enlace real */}
+                          {sinEnlace && (
+                            <button onClick={async()=>{
+                              await supabase.from('perfiles_espacios').update({
+                                servicio_id: p.servicio_id_calc,
+                                fecha_vencimiento: p.fecha_vencimiento_calc,
+                              }).eq('id', p.id)
+                              await supabase.from('servicios').update({ perfil_id: p.id }).eq('id', p.servicio_id_calc)
+                              cargar()
+                            }} style={{
+                              background:'rgba(0,212,255,0.1)',border:'1px solid #00d4ff30',
+                              color:'var(--cyan)',borderRadius:4,padding:'1px 6px',
+                              cursor:'pointer',fontSize:9,fontWeight:700,marginTop:3,display:'inline-block',
+                            }}>🔗 Sincronizar</button>
                           )}
                         </div>
                       )}
