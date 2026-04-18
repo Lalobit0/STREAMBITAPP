@@ -965,7 +965,7 @@ function App({ sesion, onLogout }) {
     try {
       const { data: serviciosData, error: e } = await supabase
         .from('servicios')
-        .select('*, clientes(id, nombre, telefono), perfiles_espacios(id, perfil, pin, cuenta_id, cuentas_maestras(servicio, vinculada))')
+        .select('*, clientes(id, nombre, telefono), perfiles_espacios!servicios_perfil_id_fkey(id, perfil, pin, cuenta_id, cuentas_maestras(servicio, vinculada))')
         .eq('cancelado', false)
         .order('fecha_vencimiento', { ascending: true })
       if (e) throw e
