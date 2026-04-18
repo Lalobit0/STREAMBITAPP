@@ -965,7 +965,7 @@ function App({ sesion, onLogout }) {
     try {
       const { data: serviciosData, error: e } = await supabase
         .from('servicios')
-        .select('*, clientes(id, nombre, telefono)')
+        .select('*, clientes(id, nombre, telefono), perfiles_espacios(id, perfil, pin, cuenta_id, cuentas_maestras(servicio, vinculada))')
         .eq('cancelado', false)
         .order('fecha_vencimiento', { ascending: true })
       if (e) throw e
@@ -976,7 +976,11 @@ function App({ sesion, onLogout }) {
         const c = s.clientes
         if (!c) continue
         if (!mapa.has(c.id)) mapa.set(c.id, { cliente: c, servicios: [] })
-        mapa.get(c.id).servicios.push({ ...s, d: diasRestantes(s.fecha_vencimiento) })
+        mapa.get(c.id).servicios.push({
+          ...s,
+          d: diasRestantes(s.fecha_vencimiento),
+          _perfil: s.perfiles_espacios || null,
+        })
       }
 
       const lista = Array.from(mapa.values()).map(({ cliente, servicios }) => {
@@ -1406,12 +1410,22 @@ function App({ sesion, onLogout }) {
                     {grupo.servicios.map((s, si) => (
                       <div key={si} style={{background:'var(--bg)',borderRadius:8,padding:'6px 8px',marginBottom:si<grupo.servicios.length-1?4:0,border:'1px solid var(--border)'}}>
                         {/* Fila 1: cuenta + vinculada + cobrado + precio */}
-                        <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:s.notas&&esAdmin?3:esAdmin?4:0}}>
+                        <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
                           <span style={{fontFamily:'var(--mono)',fontSize:12,fontWeight:700,color:'var(--text)'}}>{s.cuenta}</span>
                           {s.vinculada && <span className="tag tag-vinc" style={{fontSize:9,padding:'1px 5px'}}>{s.vinculada}</span>}
                           {s.cobrado && <span className="tag tag-cobrado" style={{fontSize:9,padding:'1px 5px'}}>✅ {formatFecha(s.cobrado)}</span>}
                           {esAdmin && <span style={{color:'var(--green)',fontSize:11,fontWeight:700,fontFamily:'var(--mono)',marginLeft:'auto'}}>${parseFloat(s.precio||0).toLocaleString()}</span>}
                         </div>
+                        {/* Perfil asignado — muestra cuenta, perfil, pin */}
+                        {s.perfil_id && s._perfil && (
+                          <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
+                            <span style={{fontSize:10,color:'var(--text3)'}}>📺</span>
+                            <span style={{fontSize:10,color:'var(--cyan)',fontFamily:'var(--mono)',fontWeight:600}}>
+                              Perfil {s._perfil.perfil}
+                              {s._perfil.pin && ` · PIN: ${s._perfil.pin}`}
+                            </span>
+                          </div>
+                        )}
                         {/* Notas (solo admin) */}
                         {s.notas && esAdmin && (
                           <div style={{fontSize:10,color:'var(--text3)',marginBottom:4,paddingLeft:2}}>📝 {s.notas}</div>
@@ -1485,6 +1499,8 @@ function CuentasView() {
   const [nuevoPerfil, setNuevoPerfil] = useState({perfil:'',pin:'',cliente:''})
   const [agregandoCuenta, setAgregandoCuenta] = useState(false)
   const [nuevaCuenta, setNuevaCuenta] = useState({servicio:'',vinculada:'',correo:'',password:'',tipo:'perfiles'})
+  const [editandoCuenta, setEditandoCuenta] = useState(null) // cuenta completa
+  const [editCuentaForm, setEditCuentaForm] = useState({})
   const [confirm, setConfirm] = useState(null)
 
   const cargar = useCallback(async () => {
@@ -1611,6 +1627,17 @@ function CuentasView() {
     cargar()
   }
 
+  async function guardarEditarCuenta() {
+    if (!editCuentaForm.servicio?.trim()) return
+    await supabase.from('cuentas_maestras').update({
+      servicio: editCuentaForm.servicio.trim(),
+      vinculada: editCuentaForm.vinculada?.trim() || null,
+      correo: editCuentaForm.correo?.trim() || null,
+      password: editCuentaForm.password?.trim() || null,
+    }).eq('id', editandoCuenta.id)
+    setEditandoCuenta(null); cargar()
+  }
+
   async function eliminarCuenta(cuenta) {
     const ocupados = (cuenta.perfiles_espacios||[]).filter(p => p.cliente_nombre && p.cliente_nombre.toUpperCase() !== 'DISPONIBLE')
     setConfirm({
@@ -1635,7 +1662,33 @@ function CuentasView() {
   return (
     <div style={{maxWidth:520,margin:'0 auto',padding:'14px 16px 0'}}>
 
-      {/* Modal confirm interno */}
+      {/* Modal editar cuenta maestra */}
+      {editandoCuenta && (
+        <div style={{position:'fixed',inset:0,background:'#000000dd',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div className="card slide-up" style={{padding:24,maxWidth:400,width:'100%'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div style={{fontWeight:800,fontSize:16}}>✏️ Editar cuenta</div>
+              <button onClick={()=>setEditandoCuenta(null)} style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16}}>✕</button>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+              <div><label style={{fontSize:9}}>SERVICIO</label>
+                <input value={editCuentaForm.servicio||''} onChange={e=>setEditCuentaForm(p=>({...p,servicio:e.target.value}))} style={{...inputSt,padding:'6px 10px',fontSize:12}}/></div>
+              <div><label style={{fontSize:9}}>VINCULADA</label>
+                <input value={editCuentaForm.vinculada||''} onChange={e=>setEditCuentaForm(p=>({...p,vinculada:e.target.value}))} style={{...inputSt,padding:'6px 10px',fontSize:12}}/></div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
+              <div><label style={{fontSize:9}}>CORREO</label>
+                <input value={editCuentaForm.correo||''} onChange={e=>setEditCuentaForm(p=>({...p,correo:e.target.value}))} style={{...inputSt,padding:'6px 10px',fontSize:12}}/></div>
+              <div><label style={{fontSize:9}}>CONTRASEÑA</label>
+                <input value={editCuentaForm.password||''} onChange={e=>setEditCuentaForm(p=>({...p,password:e.target.value}))} style={{...inputSt,padding:'6px 10px',fontSize:12,fontFamily:'var(--mono)'}}/></div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>setEditandoCuenta(null)} className="btn btn-ghost" style={{flex:1,justifyContent:'center'}}>Cancelar</button>
+              <button onClick={guardarEditarCuenta} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>✓ Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirm && (
         <div style={{position:'fixed',inset:0,background:'#000000dd',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
           <div className="card slide-up" style={{padding:24,maxWidth:340,width:'100%',textAlign:'center'}}>
@@ -1737,6 +1790,8 @@ function CuentasView() {
                 style={{background:estaAgregando?'rgba(0,212,255,0.15)':'var(--bg2)',border:`1px solid ${estaAgregando?'var(--cyan)':'var(--border)'}`,color:estaAgregando?'var(--cyan)':'var(--text3)',borderRadius:7,padding:'3px 8px',cursor:'pointer',fontSize:10,fontWeight:700,flexShrink:0}}>
                 {estaAgregando?'✕':'+'}
               </button>
+              <button onClick={()=>{ setEditandoCuenta(cuenta); setEditCuentaForm({servicio:cuenta.servicio,vinculada:cuenta.vinculada||'',correo:cuenta.correo||'',password:cuenta.password||''}) }}
+                style={{background:'none',border:'none',color:'var(--cyan)',cursor:'pointer',fontSize:13,padding:'2px 4px',opacity:0.7,flexShrink:0}}>✏️</button>
               <button onClick={()=>eliminarCuenta(cuenta)}
                 style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:13,padding:'2px 4px',opacity:0.5,flexShrink:0}}>🗑️</button>
             </div>
