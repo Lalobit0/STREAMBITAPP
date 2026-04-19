@@ -421,11 +421,10 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
       `📅 Vence: *${formatFecha(guardado.fecha)}*`,
       guardado.perfil ? `📺 Perfil: *${guardado.perfil.perfil}*` : '',
       guardado.perfil?.pin ? `🔐 PIN: *${guardado.perfil.pin}*` : '',
-      cm?.correo ? `📧 Correo: *${cm.correo}*` : '',
-      cm?.password ? `🔑 Contraseña: *${cm.password}*` : '',
       guardado.accesoCliente ? `👤 Tu acceso: *${guardado.accesoCliente}*` : '',
       ``,
-      `Cualquier duda, escríbenos 😊`,
+      `Cualquier duda escríbenos 😊`,
+      `📲 Soporte StreamBit: *664 410 1852*`,
     ].filter(Boolean).join('\n')
 
     return (
