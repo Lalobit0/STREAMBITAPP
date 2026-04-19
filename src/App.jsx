@@ -317,12 +317,13 @@ function labelAcceso(cuenta) {
 
 // ─── MODAL NUEVO/AGREGAR SERVICIO ─────────────────────────
 function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
-  const [form, setForm] = useState({ nombre: clienteNombre || '', vinculada: '', cuenta: '', precio: '', fecha: '', tel: '', notas: '', correoCliente: '', telefonoCliente: '' })
+  const [form, setForm] = useState({ nombre: clienteNombre || '', vinculada: '', cuenta: '', precio: '', fecha: '', tel: '', notas: '', accesoCliente: '' })
   const [perfilesDisp, setPerfilesDisp] = useState([])
   const [perfilSel, setPerfilSel] = useState(null)
   const [loadingPerfiles, setLoadingPerfiles] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [guardado, setGuardado] = useState(null) // { perfil, cm, nombre, tel }
   const set = (k, v) => { setForm(p => ({...p,[k]:v})); setError('') }
 
   const esConPerfiles = tienePerfiles(form.cuenta)
@@ -332,20 +333,38 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
     if (!form.cuenta || !esConPerfiles) { setPerfilesDisp([]); setPerfilSel(null); return }
     async function cargarPerfiles() {
       setLoadingPerfiles(true); setPerfilSel(null)
-      const { data } = await supabase
-        .from('perfiles_espacios')
-        .select('*, cuentas_maestras(servicio, vinculada, correo, password)')
-        .is('servicio_id', null) // solo los disponibles (sin servicio asignado)
-        .filter('cuentas_maestras.servicio', 'ilike', `%${form.cuenta.split(' ')[0]}%`)
+      const keyword = form.cuenta.split(' ')[0].toLowerCase() // "Disney", "Netflix", "HBO", "MAX"
+
+      // Primero buscar cuentas maestras que coincidan con el servicio
+      const { data: cuentas } = await supabase
+        .from('cuentas_maestras')
+        .select('id, servicio, vinculada, correo, password')
+        .ilike('servicio', `%${keyword}%`)
+
+      if (!cuentas || cuentas.length === 0) { setPerfilesDisp([]); setLoadingPerfiles(false); return }
+
       // Filtrar por vinculada si está seleccionada
-      const filtrados = (data || []).filter(p => {
-        const cm = p.cuentas_maestras
-        if (!cm) return false
-        if (form.vinculada && cm.vinculada !== form.vinculada) return false
-        const esDisp = !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE'
-        return esDisp
-      })
-      setPerfilesDisp(filtrados)
+      const cuentasFiltradas = form.vinculada
+        ? cuentas.filter(c => c.vinculada?.toUpperCase() === form.vinculada.toUpperCase())
+        : cuentas
+
+      if (cuentasFiltradas.length === 0) { setPerfilesDisp([]); setLoadingPerfiles(false); return }
+
+      const cuentaIds = cuentasFiltradas.map(c => c.id)
+
+      // Buscar perfiles disponibles de esas cuentas
+      const { data: perfiles } = await supabase
+        .from('perfiles_espacios')
+        .select('*')
+        .in('cuenta_id', cuentaIds)
+        .is('servicio_id', null)
+
+      // Enriquecer con datos de cuenta maestra y filtrar disponibles
+      const disponibles = (perfiles || [])
+        .filter(p => !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE')
+        .map(p => ({ ...p, cuentas_maestras: cuentasFiltradas.find(c => c.id === p.cuenta_id) }))
+
+      setPerfilesDisp(disponibles)
       setLoadingPerfiles(false)
     }
     cargarPerfiles()
@@ -396,8 +415,69 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
         }).eq('id', perfilSel.id)
       }
 
-      onGuardar(); onCerrar()
+      onGuardar()
+      // Mostrar confirmación con botón WhatsApp
+      const tel = form.tel || form.nombre.replace(/\D/g,'')
+      setGuardado({
+        perfil: perfilSel,
+        nombre: form.nombre.trim() || clienteNombre,
+        tel,
+        cuenta: form.cuenta,
+        fecha: form.fecha,
+        accesoCliente: form.accesoCliente,
+      })
     } catch(e) { setError('Error al guardar: ' + e.message); setSaving(false) }
+  }
+
+  // Pantalla de confirmación con WhatsApp
+  if (guardado) {
+    const cm = guardado.perfil?.cuentas_maestras
+    const tel = guardado.tel?.replace(/\D/g,'')
+    const msg = [
+      `Hola! Tu servicio *${guardado.cuenta}* ha sido activado ✅`,
+      ``,
+      `📅 Vence: *${formatFecha(guardado.fecha)}*`,
+      guardado.perfil ? `📺 Perfil: *${guardado.perfil.perfil}*` : '',
+      guardado.perfil?.pin ? `🔐 PIN: *${guardado.perfil.pin}*` : '',
+      cm?.correo ? `📧 Correo: *${cm.correo}*` : '',
+      cm?.password ? `🔑 Contraseña: *${cm.password}*` : '',
+      guardado.accesoCliente ? `👤 Tu acceso: *${guardado.accesoCliente}*` : '',
+      ``,
+      `Cualquier duda, escríbenos 😊`,
+    ].filter(Boolean).join('\n')
+
+    return (
+      <Modal onClose={onCerrar}>
+        <div style={{textAlign:'center',paddingBottom:8}}>
+          <div style={{fontSize:40,marginBottom:12}}>✅</div>
+          <div style={{fontWeight:800,fontSize:18,marginBottom:6}}>Servicio activado</div>
+          <div style={{fontSize:13,color:'var(--text2)',marginBottom:20}}>{guardado.nombre} · {guardado.cuenta}</div>
+          {guardado.perfil && (
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'12px 14px',marginBottom:16,textAlign:'left'}}>
+              <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:8}}>DATOS DEL PERFIL</div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:6}}>
+                <span style={{fontFamily:'var(--mono)',fontSize:13,fontWeight:700,color:'var(--cyan)'}}>Perfil {guardado.perfil.perfil}</span>
+                {guardado.perfil.pin && <span style={{background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:5,padding:'2px 8px',fontSize:12,fontWeight:700,color:'var(--yellow)',fontFamily:'var(--mono)'}}>PIN: {guardado.perfil.pin}</span>}
+                {cm?.vinculada && <span style={{fontSize:11,color:'var(--purple)',background:'rgba(157,78,221,0.15)',padding:'2px 8px',borderRadius:5}}>{cm.vinculada}</span>}
+              </div>
+              {cm?.correo && <div style={{fontSize:11,color:'var(--text3)',fontFamily:'var(--mono)'}}>📧 {cm.correo}</div>}
+              {cm?.password && <div style={{fontSize:11,color:'var(--text3)',marginTop:2,fontFamily:'var(--mono)'}}>🔑 {cm.password}</div>}
+            </div>
+          )}
+          {tel && tel.length >= 10 ? (
+            <a href={`https://wa.me/52${tel}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer"
+              style={{display:'block',background:'#25D366',color:'#fff',borderRadius:10,padding:'12px',fontWeight:700,fontSize:14,textDecoration:'none',marginBottom:10}}>
+              📲 Enviar datos por WhatsApp
+            </a>
+          ) : (
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:12,color:'var(--text3)'}}>
+              Sin teléfono — copia los datos manualmente
+            </div>
+          )}
+          <button className="btn btn-ghost" style={{width:'100%',justifyContent:'center'}} onClick={onCerrar}>Cerrar</button>
+        </div>
+      </Modal>
+    )
   }
 
   return (
@@ -768,17 +848,28 @@ function ModalEditarCliente({ cliente, serviciosCliente, onGuardar, onCerrar }) 
     setSvcSelId(svc.id); setPerfilSel(null)
     setLoadingPerfiles(true)
     const keyword = svc.cuenta.split(' ')[0].toLowerCase()
-    const { data } = await supabase
+
+    // Buscar cuentas maestras que coincidan
+    const { data: cuentas } = await supabase
+      .from('cuentas_maestras')
+      .select('id, servicio, vinculada, correo, password')
+      .ilike('servicio', `%${keyword}%`)
+
+    if (!cuentas || cuentas.length === 0) { setPerfilesDisp([]); setLoadingPerfiles(false); return }
+
+    const cuentaIds = cuentas.map(c => c.id)
+
+    const { data: perfiles } = await supabase
       .from('perfiles_espacios')
-      .select('*, cuentas_maestras(servicio, vinculada, correo, password)')
+      .select('*')
+      .in('cuenta_id', cuentaIds)
       .is('servicio_id', null)
-    const filtrados = (data || []).filter(p => {
-      const cm = p.cuentas_maestras
-      if (!cm) return false
-      const esDisp = !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE'
-      return esDisp && cm.servicio.toLowerCase().includes(keyword)
-    })
-    setPerfilesDisp(filtrados)
+
+    const disponibles = (perfiles || [])
+      .filter(p => !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE')
+      .map(p => ({ ...p, cuentas_maestras: cuentas.find(c => c.id === p.cuenta_id) }))
+
+    setPerfilesDisp(disponibles)
     setLoadingPerfiles(false)
   }
 
@@ -1613,6 +1704,8 @@ function CuentasView() {
   const [loading, setLoading] = useState(true)
   const [editando, setEditando] = useState(null)
   const [editVal, setEditVal] = useState('')
+  const [editPin, setEditPin] = useState('')
+  const [editCorreo, setEditCorreo] = useState('')
   const [buscar, setBuscar] = useState('')
   const [filtroSvc, setFiltroSvc] = useState('')
   const [agregandoPerfil, setAgregandoPerfil] = useState(null)
@@ -1696,7 +1789,13 @@ function CuentasView() {
       cliente_id: null,
       servicio_id: val ? perfilActual?.servicio_id : null,
       notas: val ? null : 'DISPONIBLE',
+      pin: editPin.trim() || perfilActual?.pin || null,
+      correo_cliente: editCorreo.trim() || perfilActual?.correo_cliente || null,
     }).eq('id', perfilId)
+    // Sincronizar correo en el servicio enlazado si existe
+    if (perfilActual?.servicio_id && editCorreo.trim()) {
+      await supabase.from('servicios').update({ acceso_cliente: editCorreo.trim() }).eq('id', perfilActual.servicio_id)
+    }
     setEditando(null); cargar()
   }
 
@@ -1962,13 +2061,25 @@ function CuentasView() {
                     {/* Info */}
                     <div style={{flex:1,minWidth:0}}>
                       {isEditando ? (
-                        <div style={{display:'flex',gap:5}}>
-                          <input value={editVal} onChange={e=>setEditVal(e.target.value)}
-                            onKeyDown={e=>{ if(e.key==='Enter') guardarCliente(p.id,editVal,p); if(e.key==='Escape') setEditando(null) }}
-                            placeholder="Nombre del cliente..." autoFocus
-                            style={{...inputSt,padding:'3px 7px',fontSize:11,flex:1}}/>
-                          <button onClick={()=>guardarCliente(p.id,editVal,p)} style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:5,padding:'3px 8px',cursor:'pointer',fontSize:11,fontWeight:700}}>✓</button>
-                          <button onClick={()=>setEditando(null)} style={{background:'var(--bg1)',color:'var(--text3)',border:'1px solid var(--border)',borderRadius:5,padding:'3px 7px',cursor:'pointer',fontSize:11}}>✕</button>
+                        <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                          <div style={{display:'flex',gap:5}}>
+                            <input value={editVal} onChange={e=>setEditVal(e.target.value)}
+                              onKeyDown={e=>{ if(e.key==='Escape') setEditando(null) }}
+                              placeholder="Nombre del cliente..." autoFocus
+                              style={{...inputSt,padding:'3px 7px',fontSize:11,flex:1}}/>
+                          </div>
+                          <div style={{display:'flex',gap:5}}>
+                            <input value={editPin} onChange={e=>setEditPin(e.target.value)}
+                              placeholder="PIN (ej: 1234)"
+                              style={{...inputSt,padding:'3px 7px',fontSize:11,flex:1,fontFamily:'var(--mono)',color:'var(--yellow)'}}/>
+                            <input value={editCorreo} onChange={e=>setEditCorreo(e.target.value)}
+                              placeholder="Correo / acceso cliente"
+                              style={{...inputSt,padding:'3px 7px',fontSize:11,flex:2,fontFamily:'var(--mono)'}}/>
+                          </div>
+                          <div style={{display:'flex',gap:5}}>
+                            <button onClick={()=>guardarCliente(p.id,editVal,p)} style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:5,padding:'4px 12px',cursor:'pointer',fontSize:11,fontWeight:700,flex:1}}>✓ Guardar</button>
+                            <button onClick={()=>setEditando(null)} style={{background:'var(--bg1)',color:'var(--text3)',border:'1px solid var(--border)',borderRadius:5,padding:'4px 8px',cursor:'pointer',fontSize:11}}>✕</button>
+                          </div>
                         </div>
                       ) : (
                         <div>
@@ -2019,7 +2130,7 @@ function CuentasView() {
                     {/* Acciones */}
                     {!isEditando && (
                       <div style={{display:'flex',gap:3,flexShrink:0}}>
-                        <button onClick={()=>{ setEditando(p.id); setEditVal(esDisponible?'':p.cliente_nombre||'') }}
+                        <button onClick={()=>{ setEditando(p.id); setEditVal(esDisponible?'':p.cliente_nombre||''); setEditPin(p.pin||''); setEditCorreo(p.correo_cliente||'') }}
                           style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:13,padding:'1px 3px'}}>✏️</button>
                         <button onClick={()=>eliminarPerfil(p)}
                           style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:12,padding:'1px 3px',opacity:0.5}}>🗑️</button>
