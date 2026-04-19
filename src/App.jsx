@@ -317,25 +317,26 @@ function labelAcceso(cuenta) {
 
 // ─── MODAL NUEVO/AGREGAR SERVICIO ─────────────────────────
 function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
-  const [form, setForm] = useState({ nombre: clienteNombre || '', vinculada: '', cuenta: '', precio: '', fecha: '', tel: '', notas: '', accesoCliente: '' })
+  const [form, setForm] = useState({ nombre: clienteNombre || '', cuenta: '', precio: '', fecha: '', tel: '', notas: '', accesoCliente: '' })
   const [perfilesDisp, setPerfilesDisp] = useState([])
   const [perfilSel, setPerfilSel] = useState(null)
   const [loadingPerfiles, setLoadingPerfiles] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [guardado, setGuardado] = useState(null) // { perfil, cm, nombre, tel }
+  const [guardado, setGuardado] = useState(null)
   const set = (k, v) => { setForm(p => ({...p,[k]:v})); setError('') }
 
   const esConPerfiles = tienePerfiles(form.cuenta)
 
-  // Cuando cambia cuenta o vinculada, cargar perfiles disponibles
+  // Cargar perfiles disponibles cuando cambia la cuenta — SIN filtrar por vinculada
   useEffect(() => {
     if (!form.cuenta || !esConPerfiles) { setPerfilesDisp([]); setPerfilSel(null); return }
     async function cargarPerfiles() {
       setLoadingPerfiles(true); setPerfilSel(null)
-      const keyword = form.cuenta.split(' ')[0].toLowerCase() // "Disney", "Netflix", "HBO", "MAX"
+      // Buscar por las primeras palabras del servicio para mayor compatibilidad
+      const palabras = form.cuenta.toLowerCase().split(' ')
+      const keyword = palabras[0] === 'hbo' ? 'hbo' : palabras[0] === 'netflix' ? 'netflix' : palabras[0] === 'disney' ? 'disney' : palabras[0] === 'max' ? 'max' : palabras[0]
 
-      // Primero buscar cuentas maestras que coincidan con el servicio
       const { data: cuentas } = await supabase
         .from('cuentas_maestras')
         .select('id, servicio, vinculada, correo, password')
@@ -343,32 +344,21 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
 
       if (!cuentas || cuentas.length === 0) { setPerfilesDisp([]); setLoadingPerfiles(false); return }
 
-      // Filtrar por vinculada si está seleccionada
-      const cuentasFiltradas = form.vinculada
-        ? cuentas.filter(c => c.vinculada?.toUpperCase() === form.vinculada.toUpperCase())
-        : cuentas
-
-      if (cuentasFiltradas.length === 0) { setPerfilesDisp([]); setLoadingPerfiles(false); return }
-
-      const cuentaIds = cuentasFiltradas.map(c => c.id)
-
-      // Buscar perfiles disponibles de esas cuentas
       const { data: perfiles } = await supabase
         .from('perfiles_espacios')
         .select('*')
-        .in('cuenta_id', cuentaIds)
+        .in('cuenta_id', cuentas.map(c => c.id))
         .is('servicio_id', null)
 
-      // Enriquecer con datos de cuenta maestra y filtrar disponibles
       const disponibles = (perfiles || [])
         .filter(p => !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE')
-        .map(p => ({ ...p, cuentas_maestras: cuentasFiltradas.find(c => c.id === p.cuenta_id) }))
+        .map(p => ({ ...p, cuentas_maestras: cuentas.find(c => c.id === p.cuenta_id) }))
 
       setPerfilesDisp(disponibles)
       setLoadingPerfiles(false)
     }
     cargarPerfiles()
-  }, [form.cuenta, form.vinculada, esConPerfiles])
+  }, [form.cuenta, esConPerfiles])
 
   async function guardar() {
     if (!form.nombre.trim() && !clienteId) return setError('El nombre es obligatorio')
@@ -377,7 +367,6 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
     if (esConPerfiles && !perfilSel) return setError('Selecciona un perfil disponible')
     setSaving(true); setError('')
     try {
-      // Obtener o crear cliente
       let cId = clienteId
       if (!cId) {
         const { data: existing } = await supabase.from('clientes').select('id').eq('nombre', form.nombre.trim()).single()
@@ -389,11 +378,13 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
         }
       }
 
-      // Crear el servicio
+      // La vinculada se toma del perfil seleccionado si existe
+      const vinculadaFinal = perfilSel?.cuentas_maestras?.vinculada || form.cuenta || null
+
       const { data: svcData, error: e2 } = await supabase.from('servicios').insert({
         cliente_id: cId,
         cuenta: form.cuenta.trim(),
-        vinculada: form.vinculada || null,
+        vinculada: vinculadaFinal,
         precio: parseFloat(form.precio) || 0,
         fecha_vencimiento: form.fecha,
         notas: form.notas || null,
@@ -403,7 +394,6 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
       }).select().single()
       if (e2) throw e2
 
-      // Si tiene perfil, enlazarlo
       if (perfilSel) {
         await supabase.from('perfiles_espacios').update({
           cliente_id: cId,
@@ -416,16 +406,8 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
       }
 
       onGuardar()
-      // Mostrar confirmación con botón WhatsApp
       const tel = form.tel || form.nombre.replace(/\D/g,'')
-      setGuardado({
-        perfil: perfilSel,
-        nombre: form.nombre.trim() || clienteNombre,
-        tel,
-        cuenta: form.cuenta,
-        fecha: form.fecha,
-        accesoCliente: form.accesoCliente,
-      })
+      setGuardado({ perfil: perfilSel, nombre: form.nombre.trim() || clienteNombre, tel, cuenta: form.cuenta, fecha: form.fecha, accesoCliente: form.accesoCliente })
     } catch(e) { setError('Error al guardar: ' + e.message); setSaving(false) }
   }
 
@@ -482,7 +464,7 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
 
   return (
     <Modal onClose={onCerrar}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <div>
           <div style={{fontWeight:800,fontSize:18}}>{clienteId ? '➕ Agregar servicio' : '➕ Nuevo cliente'}</div>
           {clienteNombre && <div style={{fontSize:12,color:'var(--text2)',marginTop:2,fontFamily:'var(--mono)'}}>{clienteNombre}</div>}
@@ -491,39 +473,29 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
       </div>
 
       {!clienteId && (
-        <div style={{marginBottom:14}}>
+        <div style={{marginBottom:12}}>
           <label>NOMBRE O WHATSAPP *</label>
-          <input value={form.nombre} onChange={e=>set('nombre',e.target.value)} placeholder="Ej: Juan García o 664 123 4567" />
+          <input value={form.nombre} onChange={e=>set('nombre',e.target.value)} placeholder="Ej: 664 123 4567" />
         </div>
       )}
 
-      <div style={{marginBottom:14}}>
-        <label>VINCULADA</label>
-        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-          {VINCULADAS.map(v => (
-            <button key={v} className={`pill ${form.vinculada===v?'pill-vinc-active':''}`}
-              onClick={()=>set('vinculada',form.vinculada===v?'':v)}>{v}</button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{marginBottom:14}}>
-        <label>SERVICIO / CUENTA *</label>
+      <div style={{marginBottom:12}}>
+        <label>SERVICIO *</label>
         <BuscadorServicio value={form.cuenta} onChange={v=>set('cuenta',v)} />
       </div>
 
-      {/* SELECTOR DE PERFIL — para servicios con perfiles */}
+      {/* SELECTOR DE PERFIL — muestra TODOS los disponibles sin filtrar por vinculada */}
       {form.cuenta && esConPerfiles && (
-        <div style={{marginBottom:14}}>
+        <div style={{marginBottom:12}}>
           <label>PERFIL DISPONIBLE *</label>
           {loadingPerfiles ? (
             <div style={{fontSize:12,color:'var(--text3)',padding:'8px 0',fontFamily:'var(--mono)'}}>⏳ Buscando perfiles...</div>
           ) : perfilesDisp.length === 0 ? (
             <div style={{background:'#1a0800',border:'1px solid #ff8c0030',borderRadius:8,padding:'8px 12px',fontSize:12,color:'var(--orange)'}}>
-              ⚠️ No hay perfiles disponibles para {form.cuenta} {form.vinculada ? `en ${form.vinculada}` : ''}
+              ⚠️ No hay perfiles disponibles para {form.cuenta} — todos ocupados
             </div>
           ) : (
-            <div style={{display:'flex',flexDirection:'column',gap:5}}>
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
               {perfilesDisp.map(p => {
                 const cm = p.cuentas_maestras
                 const sel = perfilSel?.id === p.id
@@ -531,20 +503,21 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
                   <button key={p.id} onClick={()=>setPerfilSel(sel?null:p)} style={{
                     background:sel?'rgba(0,212,255,0.12)':'var(--bg2)',
                     border:`1px solid ${sel?'var(--cyan)':'var(--border)'}`,
-                    borderRadius:8,padding:'8px 12px',cursor:'pointer',textAlign:'left',transition:'all .15s',
+                    borderRadius:8,padding:'7px 10px',cursor:'pointer',textAlign:'left',transition:'all .15s',
                   }}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <div style={{width:28,height:28,borderRadius:6,background:sel?'rgba(0,212,255,0.2)':'var(--bg3)',border:`1px solid ${sel?'var(--cyan)':'var(--border)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:sel?'var(--cyan)':'var(--text2)',flexShrink:0}}>{p.perfil}</div>
+                      <div style={{width:26,height:26,borderRadius:5,background:sel?'rgba(0,212,255,0.2)':'var(--bg3)',border:`1px solid ${sel?'var(--cyan)':'var(--border)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:800,color:sel?'var(--cyan)':'var(--text2)',flexShrink:0}}>{p.perfil}</div>
                       <div style={{flex:1}}>
-                        <div style={{fontSize:12,fontWeight:700,color:sel?'var(--cyan)':'var(--text)',fontFamily:'var(--mono)'}}>{cm?.servicio} · {cm?.vinculada}</div>
+                        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                          <span style={{fontSize:12,fontWeight:700,color:sel?'var(--cyan)':'var(--text)',fontFamily:'var(--mono)'}}>{cm?.servicio}</span>
+                          <span style={{fontSize:10,color:'var(--purple)',background:'rgba(157,78,221,0.15)',padding:'1px 6px',borderRadius:4}}>{cm?.vinculada}</span>
+                        </div>
                         {cm?.correo && <div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>{cm.correo}</div>}
                       </div>
-                      {p.pin && <div style={{background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:5,padding:'2px 7px',fontSize:11,fontWeight:700,color:'var(--yellow)',fontFamily:'var(--mono)'}}>{p.pin}</div>}
-                      {sel && <span style={{color:'var(--cyan)',fontSize:14}}>✓</span>}
+                      {p.pin && <div style={{background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:4,padding:'1px 6px',fontSize:10,fontWeight:700,color:'var(--yellow)',fontFamily:'var(--mono)'}}>{p.pin}</div>}
+                      {sel && <span style={{color:'var(--cyan)'}}>✓</span>}
                     </div>
-                    {cm?.password && sel && (
-                      <div style={{marginTop:6,fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>🔑 {cm.password}</div>
-                    )}
+                    {cm?.password && sel && <div style={{marginTop:4,fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>🔑 {cm.password}</div>}
                   </button>
                 )
               })}
@@ -553,43 +526,34 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
         </div>
       )}
 
-      {/* ACCESO DEL CLIENTE — aparece para todos los servicios cuando hay cuenta seleccionada */}
+      {/* Acceso del cliente */}
       {form.cuenta && (
-        <div style={{marginBottom:14}}>
+        <div style={{marginBottom:12}}>
           <label>{labelAcceso(form.cuenta)}</label>
-          <input
-            value={form.accesoCliente||''}
-            onChange={e=>set('accesoCliente',e.target.value)}
-            placeholder={placeholderAcceso(form.cuenta)}
-            style={{fontFamily:'var(--mono)'}}
-          />
-          {!esConPerfiles && (
-            <div style={{fontSize:10,color:'var(--text3)',marginTop:4}}>
-              💡 Este dato se guardará para identificar al cliente en la cuenta
-            </div>
-          )}
+          <input value={form.accesoCliente||''} onChange={e=>set('accesoCliente',e.target.value)} placeholder={placeholderAcceso(form.cuenta)} style={{fontFamily:'var(--mono)'}} />
         </div>
       )}
 
-      <div style={{marginBottom:14}}>
-        <label>PRECIO (MXN)</label>
-        <input value={form.precio} onChange={e=>set('precio',e.target.value)} placeholder="95" type="number" style={{fontFamily:'var(--mono)'}} />
-      </div>
-
-      <div style={{marginBottom:14}}>
-        <SelectorFecha value={form.fecha} onChange={v=>set('fecha',v)} />
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+        <div>
+          <label>PRECIO (MXN)</label>
+          <input value={form.precio} onChange={e=>set('precio',e.target.value)} placeholder="95" type="number" style={{fontFamily:'var(--mono)'}} />
+        </div>
+        <div>
+          <SelectorFecha value={form.fecha} onChange={v=>set('fecha',v)} label="FECHA VENC. *" />
+        </div>
       </div>
 
       {!clienteId && (
-        <div style={{marginBottom:14}}>
+        <div style={{marginBottom:12}}>
           <label>TELÉFONO WHATSAPP</label>
           <input value={form.tel} onChange={e=>set('tel',e.target.value)} placeholder="6641234567" type="tel" style={{fontFamily:'var(--mono)'}} />
         </div>
       )}
 
-      <div style={{marginBottom:20}}>
+      <div style={{marginBottom:16}}>
         <label>NOTAS</label>
-        <input value={form.notas} onChange={e=>set('notas',e.target.value)} placeholder="Ej: Perfil 4, pin 3333" />
+        <input value={form.notas} onChange={e=>set('notas',e.target.value)} placeholder="Ej: Notas adicionales" />
       </div>
 
       {error && <div style={{background:'#1a0008',border:'1px solid #ff336630',borderRadius:8,padding:'8px 12px',marginBottom:14,fontSize:12,color:'var(--red)'}}>⚠️ {error}</div>}
