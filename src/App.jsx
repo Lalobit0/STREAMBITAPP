@@ -750,11 +750,58 @@ function ModalEditar({ servicio, cliente, onGuardar, onCerrar }) {
 }
 
 // ─── MODAL EDITAR CLIENTE ────────────────────────────────
-function ModalEditarCliente({ cliente, onGuardar, onCerrar }) {
+function ModalEditarCliente({ cliente, serviciosCliente, onGuardar, onCerrar }) {
   const [nombre, setNombre] = useState(cliente.nombre || '')
-  const [tel, setTel] = useState(cliente.telefono || '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Para vincular perfiles manualmente
+  const [perfilesDisp, setPerfilesDisp] = useState([])
+  const [loadingPerfiles, setLoadingPerfiles] = useState(false)
+  const [svcSelId, setSvcSelId] = useState(null) // servicio seleccionado para vincular
+  const [perfilSel, setPerfilSel] = useState(null)
+  const [vinculando, setVinculando] = useState(false)
+
+  // Servicios sin perfil asignado
+  const svcSinPerfil = (serviciosCliente || []).filter(s => !s.perfil_id)
+
+  async function cargarPerfilesPara(svc) {
+    setSvcSelId(svc.id); setPerfilSel(null)
+    setLoadingPerfiles(true)
+    const keyword = svc.cuenta.split(' ')[0].toLowerCase()
+    const { data } = await supabase
+      .from('perfiles_espacios')
+      .select('*, cuentas_maestras(servicio, vinculada, correo, password)')
+      .is('servicio_id', null)
+    const filtrados = (data || []).filter(p => {
+      const cm = p.cuentas_maestras
+      if (!cm) return false
+      const esDisp = !p.cliente_nombre || p.cliente_nombre.toUpperCase() === 'DISPONIBLE' || (p.notas||'').toUpperCase() === 'DISPONIBLE'
+      return esDisp && cm.servicio.toLowerCase().includes(keyword)
+    })
+    setPerfilesDisp(filtrados)
+    setLoadingPerfiles(false)
+  }
+
+  async function vincularPerfil() {
+    if (!svcSelId || !perfilSel) return
+    setVinculando(true)
+    try {
+      // Actualizar servicio con perfil_id
+      await supabase.from('servicios').update({ perfil_id: perfilSel.id }).eq('id', svcSelId)
+      // Actualizar perfil con datos del cliente
+      const svc = svcSinPerfil.find(s => s.id === svcSelId)
+      await supabase.from('perfiles_espacios').update({
+        cliente_id: cliente.id,
+        cliente_nombre: nombre.trim() || cliente.nombre,
+        servicio_id: svcSelId,
+        fecha_vencimiento: svc?.fecha_vencimiento || null,
+        notas: null,
+      }).eq('id', perfilSel.id)
+      setSvcSelId(null); setPerfilSel(null); setPerfilesDisp([])
+      onGuardar()
+    } catch(e) { setError('Error al vincular: ' + e.message) }
+    setVinculando(false)
+  }
 
   async function guardar() {
     if (!nombre.trim()) return setError('El nombre es obligatorio')
@@ -762,7 +809,8 @@ function ModalEditarCliente({ cliente, onGuardar, onCerrar }) {
     try {
       const { error: e } = await supabase.from('clientes').update({
         nombre: nombre.trim(),
-        telefono: tel.trim() || null,
+        // Auto-extraer teléfono del nombre si es número
+        telefono: nombre.trim().replace(/\D/g,'').length >= 10 ? nombre.trim().replace(/\D/g,'') : cliente.telefono,
       }).eq('id', cliente.id)
       if (e) throw e
       onGuardar(); onCerrar()
@@ -770,22 +818,94 @@ function ModalEditarCliente({ cliente, onGuardar, onCerrar }) {
   }
 
   return (
-    <Modal onClose={onCerrar} maxWidth={400}>
+    <Modal onClose={onCerrar}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div style={{fontWeight:800,fontSize:18}}>👤 Editar cliente</div>
         <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
       </div>
-      <div style={{marginBottom:14}}>
+
+      {/* Nombre */}
+      <div style={{marginBottom:16}}>
         <label>NOMBRE *</label>
-        <input value={nombre} onChange={e=>{setNombre(e.target.value);setError('')}} placeholder="Nombre del cliente" />
+        <input value={nombre} onChange={e=>{setNombre(e.target.value);setError('')}} placeholder="Nombre o número de teléfono" />
+        <div style={{fontSize:10,color:'var(--text3)',marginTop:4}}>💡 Si el nombre es el número, el botón WhatsApp funcionará automáticamente</div>
       </div>
-      <div style={{marginBottom:20}}>
-        <label>TELÉFONO WHATSAPP</label>
-        <input value={tel} onChange={e=>setTel(e.target.value)} placeholder="6641234567" type="tel" style={{fontFamily:'var(--mono)'}} />
-      </div>
+
+      {/* Vincular perfiles */}
+      {svcSinPerfil.length > 0 && (
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,color:'var(--cyan)',fontWeight:700,fontFamily:'var(--mono)',marginBottom:8}}>🔗 VINCULAR A PERFIL/CUENTA</div>
+          <div style={{fontSize:11,color:'var(--text3)',marginBottom:8}}>Servicios sin perfil asignado:</div>
+          <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:10}}>
+            {svcSinPerfil.map(s => (
+              <button key={s.id} onClick={()=>cargarPerfilesPara(s)} style={{
+                background:svcSelId===s.id?'rgba(0,212,255,0.12)':'var(--bg2)',
+                border:`1px solid ${svcSelId===s.id?'var(--cyan)':'var(--border)'}`,
+                borderRadius:8,padding:'8px 12px',cursor:'pointer',textAlign:'left',
+                display:'flex',alignItems:'center',gap:8,
+              }}>
+                <span style={{fontFamily:'var(--mono)',fontSize:12,fontWeight:700,color:svcSelId===s.id?'var(--cyan)':'var(--text)'}}>{s.cuenta}</span>
+                {s.vinculada && <span style={{fontSize:10,color:'var(--purple)',background:'rgba(157,78,221,0.15)',padding:'1px 6px',borderRadius:4}}>{s.vinculada}</span>}
+                <span style={{fontSize:10,color:'var(--text3)',marginLeft:'auto'}}>{formatFecha(s.fecha_vencimiento)}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Perfiles disponibles para el servicio seleccionado */}
+          {svcSelId && (
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 12px'}}>
+              <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:8}}>PERFILES DISPONIBLES</div>
+              {loadingPerfiles ? (
+                <div style={{fontSize:12,color:'var(--text3)',fontFamily:'var(--mono)'}}>⏳ Buscando...</div>
+              ) : perfilesDisp.length === 0 ? (
+                <div style={{fontSize:12,color:'var(--orange)'}}>⚠️ No hay perfiles disponibles para este servicio</div>
+              ) : (
+                <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:8}}>
+                  {perfilesDisp.map(p => {
+                    const cm = p.cuentas_maestras
+                    const sel = perfilSel?.id === p.id
+                    return (
+                      <button key={p.id} onClick={()=>setPerfilSel(sel?null:p)} style={{
+                        background:sel?'rgba(0,212,255,0.12)':'var(--bg3)',
+                        border:`1px solid ${sel?'var(--cyan)':'var(--border)'}`,
+                        borderRadius:7,padding:'7px 10px',cursor:'pointer',textAlign:'left',
+                        display:'flex',alignItems:'center',gap:8,
+                      }}>
+                        <div style={{width:26,height:26,borderRadius:5,background:sel?'rgba(0,212,255,0.2)':'var(--bg2)',border:`1px solid ${sel?'var(--cyan)':'var(--border)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:800,color:sel?'var(--cyan)':'var(--text2)',flexShrink:0}}>{p.perfil}</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:700,color:sel?'var(--cyan)':'var(--text)',fontFamily:'var(--mono)'}}>{cm?.servicio} · {cm?.vinculada}</div>
+                          {cm?.correo && <div style={{fontSize:10,color:'var(--text3)'}}>{cm.correo}</div>}
+                        </div>
+                        {p.pin && <div style={{fontSize:10,fontWeight:700,color:'var(--yellow)',fontFamily:'var(--mono)',background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:4,padding:'1px 6px'}}>{p.pin}</div>}
+                        {sel && <span style={{color:'var(--cyan)'}}>✓</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {perfilSel && (
+                <button onClick={vincularPerfil} disabled={vinculando} style={{
+                  background:'var(--cyan)',color:'var(--bg)',border:'none',borderRadius:7,
+                  padding:'7px',cursor:'pointer',fontSize:12,fontWeight:700,width:'100%',
+                }}>
+                  {vinculando ? 'Vinculando...' : `🔗 Vincular perfil ${perfilSel.perfil}`}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {svcSinPerfil.length === 0 && (
+        <div style={{background:'#001a0e',border:'1px solid #00ff8820',borderRadius:8,padding:'8px 12px',marginBottom:16,fontSize:11,color:'var(--green)'}}>
+          ✅ Todos los servicios tienen perfil asignado
+        </div>
+      )}
+
       {error && <div style={{background:'#1a0008',border:'1px solid #ff336630',borderRadius:8,padding:'8px 12px',marginBottom:14,fontSize:12,color:'var(--red)'}}>⚠️ {error}</div>}
+
       <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:15}} onClick={guardar} disabled={saving}>
-        {saving ? 'Guardando...' : '✓ Guardar'}
+        {saving ? 'Guardando...' : '✓ Guardar nombre'}
       </button>
     </Modal>
   )
@@ -1154,7 +1274,7 @@ function App({ sesion, onLogout }) {
       {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={()=>{cargarDatos();mostrarToast('Servicio renovado')}} onCerrar={()=>setModalRenovar(null)} />}
       {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cobrado y renovado ✅')}} onCerrar={()=>setModalCobrarRenovar(null)} />}
       {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cambios guardados')}} onCerrar={()=>setModalEditar(null)} />}
-      {modalEditarCliente && <ModalEditarCliente cliente={modalEditarCliente} onGuardar={()=>{cargarDatos();mostrarToast('Cliente actualizado')}} onCerrar={()=>setModalEditarCliente(null)} />}
+      {modalEditarCliente && <ModalEditarCliente cliente={modalEditarCliente.cliente} serviciosCliente={modalEditarCliente.servicios} onGuardar={()=>{cargarDatos();mostrarToast('Cliente actualizado')}} onCerrar={()=>setModalEditarCliente(null)} />}
       {modalHistorial && <ModalHistorial cliente={modalHistorial} onCerrar={()=>setModalHistorial(null)} />}
       {modalConfirm && <ModalConfirm {...modalConfirm} onCancelar={()=>setModalConfirm(null)} />}
       {toast && <Toast msg={toast.msg} tipo={toast.tipo} />}
@@ -1371,7 +1491,7 @@ function App({ sesion, onLogout }) {
                 )}
                 {esAdmin && (
                   <button className="btn" style={{background:'transparent',border:'1px solid #00d4ff30',color:'var(--cyan)',padding:'4px 8px',fontSize:11}}
-                    onClick={()=>setModalEditarCliente(cliente)}>✏️</button>
+                    onClick={()=>setModalEditarCliente({cliente, servicios})}>✏️</button>
                 )}
                 {esAdmin && (
                   <button className="btn" style={{background:'var(--bg2)',border:'1px solid var(--cyan)',color:'var(--cyan)',padding:'4px 8px',fontSize:11}}
