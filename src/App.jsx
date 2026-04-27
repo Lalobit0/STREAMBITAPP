@@ -262,24 +262,82 @@ function ModalConfirm({ mensaje, detalle, onConfirmar, onCancelar, colorBtn = 'v
 }
 
 // ─── BUSCADOR SERVICIO ────────────────────────────────────
+// ─── CATEGORÍAS DE SERVICIOS ─────────────────────────────
+const CATEGORIAS_SERVICIOS = {
+  'Streaming':      { emoji:'🎬', color:'#ff3366' },
+  'Música':         { emoji:'🎵', color:'#1db954' },
+  'Productividad':  { emoji:'💼', color:'#0078d4' },
+  'Video':          { emoji:'📺', color:'#ff0000' },
+  'IA':             { emoji:'🤖', color:'#9d4edd' },
+  'IPTV':           { emoji:'📡', color:'#00d4ff' },
+  'Otro':           { emoji:'⚡', color:'#ffd60a' },
+}
+
+// BuscadorServicio: carga dinámicamente desde cuentas_maestras + lista base
 function BuscadorServicio({ value, onChange }) {
   const [q, setQ] = useState(value || '')
   const [open, setOpen] = useState(false)
-  const filtered = q ? SERVICIOS.filter(s => s.toLowerCase().includes(q.toLowerCase())) : SERVICIOS
-  function sel(s) { setQ(s); onChange(s); setOpen(false) }
+  const [serviciosBD, setServiciosBD] = useState([])
+
+  useEffect(() => {
+    supabase.from('cuentas_maestras').select('servicio, categoria').then(({ data }) => {
+      if (data) {
+        const unicos = [...new Map(data.map(d => [d.servicio, d])).values()]
+        setServiciosBD(unicos)
+      }
+    })
+  }, [])
+
+  // Combinar servicios de BD con los hardcodeados, sin duplicados
+  const todosServicios = useMemo(() => {
+    const bdNombres = serviciosBD.map(s => s.servicio)
+    const soloBase = SERVICIOS.filter(s => !bdNombres.includes(s))
+    return [
+      ...serviciosBD.map(s => ({ nombre: s.servicio, categoria: s.categoria || 'Otro' })),
+      ...soloBase.map(s => ({ nombre: s, categoria: 'Otro' })),
+    ]
+  }, [serviciosBD])
+
+  const filtrados = q
+    ? todosServicios.filter(s => s.nombre.toLowerCase().includes(q.toLowerCase()))
+    : todosServicios
+
+  // Agrupar por categoría
+  const agrupados = useMemo(() => {
+    const map = {}
+    filtrados.forEach(s => {
+      const cat = s.categoria || 'Otro'
+      if (!map[cat]) map[cat] = []
+      map[cat].push(s)
+    })
+    return map
+  }, [filtrados])
+
+  function sel(nombre) { setQ(nombre); onChange(nombre); setOpen(false) }
+
   return (
     <div style={{position:'relative'}}>
       <input value={q} onChange={e=>{setQ(e.target.value);onChange(e.target.value);setOpen(true)}}
         onFocus={()=>setOpen(true)} onBlur={()=>setTimeout(()=>setOpen(false),150)}
         placeholder="Busca o escribe un servicio..." />
-      {open && filtered.length > 0 && (
-        <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,maxHeight:180,overflowY:'auto',zIndex:50}}>
-          {filtered.map(s => (
-            <div key={s} onMouseDown={()=>sel(s)}
-              style={{padding:'9px 14px',cursor:'pointer',fontSize:13,color:value===s?'var(--cyan)':'var(--text)',background:value===s?'var(--bg3)':'transparent',borderBottom:'1px solid #1e2d4a20',fontFamily:'var(--mono)'}}>
-              {s}
-            </div>
-          ))}
+      {open && filtrados.length > 0 && (
+        <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,maxHeight:220,overflowY:'auto',zIndex:50}}>
+          {Object.entries(agrupados).map(([cat, items]) => {
+            const catInfo = CATEGORIAS_SERVICIOS[cat] || CATEGORIAS_SERVICIOS['Otro']
+            return (
+              <div key={cat}>
+                <div style={{padding:'5px 12px 3px',fontSize:9,fontWeight:700,color:catInfo.color,fontFamily:'var(--mono)',background:'var(--bg3)',letterSpacing:'0.08em',position:'sticky',top:0}}>
+                  {catInfo.emoji} {cat.toUpperCase()}
+                </div>
+                {items.map(s => (
+                  <div key={s.nombre} onMouseDown={()=>sel(s.nombre)}
+                    style={{padding:'8px 14px',cursor:'pointer',fontSize:13,color:value===s.nombre?'var(--cyan)':'var(--text)',background:value===s.nombre?'rgba(0,212,255,0.08)':'transparent',borderBottom:'1px solid #1e2d4a15',fontFamily:'var(--mono)'}}>
+                    {s.nombre}
+                  </div>
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -328,6 +386,155 @@ function labelAcceso(cuenta) {
   if (c.includes('office') || c.includes('chatgpt') || c.includes('canva')) return 'CORREO DEL CLIENTE'
   if (c.includes('apple')) return 'APPLE ID DEL CLIENTE'
   return 'ACCESO DEL CLIENTE'
+}
+
+// ─── MODAL GESTOR DE SERVICIOS ────────────────────────────
+function ModalGestorServicios({ onCerrar }) {
+  const [servicios, setServicios] = useState([])
+  const [form, setForm] = useState({ nombre: '', categoria: 'Streaming', vinculada: '', correo: '', password: '', tipo: 'perfiles' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [buscar, setBuscar] = useState('')
+  const set = (k, v) => setForm(p => ({...p,[k]:v}))
+
+  async function cargar() {
+    const { data } = await supabase.from('cuentas_maestras').select('id, servicio, categoria, vinculada, correo, tipo').order('categoria').order('servicio')
+    setServicios(data || [])
+  }
+  useEffect(() => { cargar() }, [])
+
+  async function guardar() {
+    if (!form.nombre.trim()) return setError('El nombre es obligatorio')
+    if (!form.categoria) return setError('Selecciona una categoría')
+    setSaving(true); setError('')
+    try {
+      const { error: e } = await supabase.from('cuentas_maestras').insert({
+        servicio: form.nombre.trim(),
+        categoria: form.categoria,
+        vinculada: form.vinculada || null,
+        correo: form.correo || null,
+        password: form.password || null,
+        tipo: form.tipo,
+      })
+      if (e) throw e
+      setForm({ nombre: '', categoria: 'Streaming', vinculada: '', correo: '', password: '', tipo: 'perfiles' })
+      cargar()
+    } catch(e) { setError(e.message) }
+    setSaving(false)
+  }
+
+  async function eliminar(id) {
+    if (!confirm('¿Eliminar esta cuenta?')) return
+    await supabase.from('cuentas_maestras').delete().eq('id', id)
+    cargar()
+  }
+
+  const filtrados = buscar ? servicios.filter(s =>
+    s.servicio?.toLowerCase().includes(buscar.toLowerCase()) ||
+    s.categoria?.toLowerCase().includes(buscar.toLowerCase()) ||
+    s.vinculada?.toLowerCase().includes(buscar.toLowerCase())
+  ) : servicios
+
+  // Agrupar por categoría
+  const agrupados = filtrados.reduce((acc, s) => {
+    const cat = s.categoria || 'Otro'
+    if (!acc[cat]) acc[cat] = []
+    acc[cat].push(s)
+    return acc
+  }, {})
+
+  return (
+    <Modal onClose={onCerrar} maxWidth={480}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div style={{fontWeight:800,fontSize:17}}>⚙️ Gestionar servicios</div>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
+      </div>
+
+      {/* Formulario nuevo servicio */}
+      <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'14px',marginBottom:16}}>
+        <div style={{fontSize:10,color:'var(--cyan)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:10}}>➕ NUEVO SERVICIO</div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+          <div>
+            <label style={{fontSize:9}}>NOMBRE *</label>
+            <input value={form.nombre} onChange={e=>set('nombre',e.target.value)} placeholder="ej: Gemini, Grok..." style={{fontSize:12}} />
+          </div>
+          <div>
+            <label style={{fontSize:9}}>CATEGORÍA *</label>
+            <select value={form.categoria} onChange={e=>set('categoria',e.target.value)}
+              style={{width:'100%',background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:8,padding:'8px 10px',color:'var(--text)',fontSize:12,outline:'none'}}>
+              {Object.keys(CATEGORIAS_SERVICIOS).map(c => (
+                <option key={c} value={c}>{CATEGORIAS_SERVICIOS[c].emoji} {c}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+          <div>
+            <label style={{fontSize:9}}>VINCULADA</label>
+            <select value={form.vinculada} onChange={e=>set('vinculada',e.target.value)}
+              style={{width:'100%',background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:8,padding:'8px 10px',color:'var(--text)',fontSize:12,outline:'none'}}>
+              <option value="">Sin vinculada</option>
+              {VINCULADAS.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:9}}>TIPO</label>
+            <select value={form.tipo} onChange={e=>set('tipo',e.target.value)}
+              style={{width:'100%',background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:8,padding:'8px 10px',color:'var(--text)',fontSize:12,outline:'none'}}>
+              <option value="perfiles">Perfiles compartidos</option>
+              <option value="individual">Individual (1 cuenta = 1 cliente)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+          <div>
+            <label style={{fontSize:9}}>CORREO</label>
+            <input value={form.correo} onChange={e=>set('correo',e.target.value)} placeholder="correo@ejemplo.com" style={{fontSize:12,fontFamily:'var(--mono)'}} />
+          </div>
+          <div>
+            <label style={{fontSize:9}}>CONTRASEÑA</label>
+            <input value={form.password} onChange={e=>set('password',e.target.value)} placeholder="••••••••" style={{fontSize:12,fontFamily:'var(--mono)'}} />
+          </div>
+        </div>
+
+        {error && <div style={{color:'var(--red)',fontSize:11,marginBottom:8}}>⚠️ {error}</div>}
+
+        <button onClick={guardar} disabled={saving} className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:'9px',fontSize:13}}>
+          {saving ? 'Guardando...' : '✓ Crear servicio'}
+        </button>
+      </div>
+
+      {/* Lista de servicios existentes */}
+      <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="🔍 Buscar servicio..." style={{marginBottom:10,fontSize:12}} />
+
+      <div style={{maxHeight:300,overflowY:'auto',display:'flex',flexDirection:'column',gap:6}}>
+        {Object.entries(agrupados).map(([cat, items]) => {
+          const catInfo = CATEGORIAS_SERVICIOS[cat] || CATEGORIAS_SERVICIOS['Otro']
+          return (
+            <div key={cat}>
+              <div style={{fontSize:9,fontWeight:700,color:catInfo.color,fontFamily:'var(--mono)',padding:'4px 2px',letterSpacing:'0.08em'}}>
+                {catInfo.emoji} {cat.toUpperCase()} ({items.length})
+              </div>
+              {items.map(s => (
+                <div key={s.id} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'7px 10px',marginBottom:4,display:'flex',alignItems:'center',gap:8}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <span style={{fontSize:12,fontWeight:700,fontFamily:'var(--mono)',color:'var(--text)'}}>{s.servicio}</span>
+                    {s.vinculada && <span style={{fontSize:10,color:'var(--purple)',marginLeft:6}}>{s.vinculada}</span>}
+                    {s.correo && <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.correo}</div>}
+                  </div>
+                  <span style={{fontSize:9,color:catInfo.color,background:`${catInfo.color}15`,border:`1px solid ${catInfo.color}30`,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{s.tipo||'perfiles'}</span>
+                  <button onClick={()=>eliminar(s.id)} style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:12,opacity:0.5,flexShrink:0}}>🗑️</button>
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    </Modal>
+  )
 }
 
 // ─── MODAL NUEVO/AGREGAR SERVICIO ─────────────────────────
@@ -1198,6 +1405,7 @@ function App({ sesion, onLogout }) {
   const [verRes, setVerRes] = useState(false)
   const [ultimaAct, setUltimaAct] = useState(null)
   const [modalForm, setModalForm] = useState(null)
+  const [modalGestorServicios, setModalGestorServicios] = useState(false)
   const [modalRenovar, setModalRenovar] = useState(null)
   const [modalCobrarRenovar, setModalCobrarRenovar] = useState(null)
   const [modalEditar, setModalEditar] = useState(null)
@@ -1405,6 +1613,7 @@ function App({ sesion, onLogout }) {
       <style>{CSS}</style>
 
       {modalForm && <ModalServicio clienteId={modalForm.clienteId} clienteNombre={modalForm.clienteNombre} onGuardar={()=>{cargarDatos();mostrarToast('Servicio guardado')}} onCerrar={()=>setModalForm(null)} />}
+      {modalGestorServicios && <ModalGestorServicios onCerrar={()=>setModalGestorServicios(false)} />}
       {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={()=>{cargarDatos();mostrarToast('Servicio renovado')}} onCerrar={()=>setModalRenovar(null)} />}
       {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cobrado y renovado ✅')}} onCerrar={()=>setModalCobrarRenovar(null)} />}
       {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cambios guardados')}} onCerrar={()=>setModalEditar(null)} />}
@@ -1441,6 +1650,7 @@ function App({ sesion, onLogout }) {
             </div>
             <div style={{display:'flex',gap:4}}>
               {esAdmin && <button className="btn btn-primary" style={{padding:'5px 10px',fontSize:11}} onClick={()=>setModalForm({})}>+ Nuevo</button>}
+              {esAdmin && <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={()=>setModalGestorServicios(true)} title="Gestionar servicios">⚙️</button>}
               <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={cargarDatos} disabled={loading}>{loading?'⏳':'⟳'}</button>
               <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={onLogout}>⏏</button>
             </div>
