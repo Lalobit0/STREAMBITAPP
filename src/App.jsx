@@ -3,7 +3,52 @@ import { supabase } from './supabase.js'
 
 // ─── CONSTANTES ───────────────────────────────────────────
 const VINCULADAS = ['SIX','Lalobit','ed.perma out','EDGAR.PERMA','ARES','Laloshop','edd.perma gmail']
-const SERVICIOS  = ['Netflix','Netflix extra','Netflix genérico','HBO HD','HBO 4K','HBO PLATINO','Disney 4K','Disney HD','PRIME','Paramount','VIX','Crunchyroll','Spotify','Spotify 3','ChatGPT gen','ChatGPT+','Office','Office3','Office12','Canva1','Canva12','APPLE ONE','Apple TV','Youtubep1','Youtubep3','ARES1','ARES2','ARES12','IPTVLAT1','IPTVLAT3']
+
+// Servicios base con categoría asignada
+const SERVICIOS_BASE = [
+  // Streaming
+  { nombre:'Netflix',           categoria:'Streaming' },
+  { nombre:'Netflix extra',     categoria:'Streaming' },
+  { nombre:'Netflix genérico',  categoria:'Streaming' },
+  { nombre:'HBO HD',            categoria:'Streaming' },
+  { nombre:'HBO 4K',            categoria:'Streaming' },
+  { nombre:'HBO PLATINO',       categoria:'Streaming' },
+  { nombre:'Disney 4K',         categoria:'Streaming' },
+  { nombre:'Disney HD',         categoria:'Streaming' },
+  { nombre:'MAX',               categoria:'Streaming' },
+  { nombre:'PRIME',             categoria:'Streaming' },
+  { nombre:'Paramount',         categoria:'Streaming' },
+  { nombre:'VIX',               categoria:'Streaming' },
+  { nombre:'Crunchyroll',       categoria:'Streaming' },
+  { nombre:'APPLE ONE',         categoria:'Streaming' },
+  { nombre:'Apple TV',          categoria:'Streaming' },
+  // Música
+  { nombre:'Spotify',           categoria:'Música' },
+  { nombre:'Spotify 3',         categoria:'Música' },
+  // Video
+  { nombre:'Youtubep1',         categoria:'Video' },
+  { nombre:'Youtubep3',         categoria:'Video' },
+  // Productividad
+  { nombre:'Office',            categoria:'Productividad' },
+  { nombre:'Office3',           categoria:'Productividad' },
+  { nombre:'Office12',          categoria:'Productividad' },
+  { nombre:'Canva1',            categoria:'Productividad' },
+  { nombre:'Canva12',           categoria:'Productividad' },
+  // IA
+  { nombre:'ChatGPT+',          categoria:'IA' },
+  { nombre:'ChatGPT gen',       categoria:'IA' },
+  { nombre:'Gemini',            categoria:'IA' },
+  { nombre:'Grok',              categoria:'IA' },
+  // IPTV
+  { nombre:'ARES1',             categoria:'IPTV' },
+  { nombre:'ARES2',             categoria:'IPTV' },
+  { nombre:'ARES12',            categoria:'IPTV' },
+  { nombre:'IPTVLAT1',          categoria:'IPTV' },
+  { nombre:'IPTVLAT3',          categoria:'IPTV' },
+]
+
+// Array plano para compatibilidad
+const SERVICIOS = SERVICIOS_BASE.map(s => s.nombre)
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;600;800;900&display=swap');
@@ -288,13 +333,13 @@ function BuscadorServicio({ value, onChange }) {
     })
   }, [])
 
-  // Combinar servicios de BD con los hardcodeados, sin duplicados
+  // Combinar servicios de BD con los base, sin duplicados
   const todosServicios = useMemo(() => {
     const bdNombres = serviciosBD.map(s => s.servicio)
-    const soloBase = SERVICIOS.filter(s => !bdNombres.includes(s))
+    const soloBase = SERVICIOS_BASE.filter(s => !bdNombres.includes(s.nombre))
     return [
       ...serviciosBD.map(s => ({ nombre: s.servicio, categoria: s.categoria || 'Otro' })),
-      ...soloBase.map(s => ({ nombre: s, categoria: 'Otro' })),
+      ...soloBase,
     ]
   }, [serviciosBD])
 
@@ -537,6 +582,74 @@ function ModalGestorServicios({ onCerrar }) {
   )
 }
 
+// ─── MODAL BITÁCORA ───────────────────────────────────────
+function ModalBitacora({ onCerrar }) {
+  const [registros, setRegistros] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function cargar() {
+      const { data } = await supabase.from('bitacora')
+        .select('*').order('created_at', { ascending: false }).limit(100)
+      setRegistros(data || [])
+      setLoading(false)
+    }
+    cargar()
+  }, [])
+
+  const ACCION_INFO = {
+    COBRAR:           { emoji:'✅', color:'var(--green)' },
+    DESHACER_COBRO:   { emoji:'↩️', color:'var(--orange)' },
+    RENOVAR:          { emoji:'🔄', color:'var(--cyan)' },
+    CANCELAR:         { emoji:'❌', color:'var(--orange)' },
+    ELIMINAR_SERVICIO:{ emoji:'🗑️', color:'var(--red)' },
+    ELIMINAR_CLIENTE: { emoji:'👤🗑️', color:'var(--red)' },
+    NUEVO_SERVICIO:   { emoji:'➕', color:'var(--purple)' },
+  }
+
+  function formatHora(ts) {
+    const d = new Date(ts)
+    return d.toLocaleDateString('es-MX', { day:'2-digit', month:'short' }) + ' ' +
+      d.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' })
+  }
+
+  return (
+    <Modal onClose={onCerrar}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div style={{fontWeight:800,fontSize:17}}>📋 Bitácora de acciones</div>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
+      </div>
+      {loading ? (
+        <div style={{textAlign:'center',padding:20,color:'var(--text3)',fontFamily:'var(--mono)'}}>⏳ Cargando...</div>
+      ) : registros.length === 0 ? (
+        <div style={{textAlign:'center',padding:20,color:'var(--text3)'}}>Sin registros aún</div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:420,overflowY:'auto'}}>
+          {registros.map(r => {
+            const info = ACCION_INFO[r.accion] || { emoji:'⚡', color:'var(--text3)' }
+            return (
+              <div key={r.id} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:9,padding:'9px 12px',display:'flex',gap:10,alignItems:'flex-start'}}>
+                <div style={{fontSize:16,flexShrink:0,marginTop:1}}>{info.emoji}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:2}}>
+                    <span style={{fontSize:11,fontWeight:700,color:info.color,fontFamily:'var(--mono)'}}>{r.accion}</span>
+                    {r.cliente_nombre && <span style={{fontSize:11,color:'var(--text)',fontWeight:600}}>{r.cliente_nombre}</span>}
+                  </div>
+                  {r.detalle?.cuenta && <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>{r.detalle.cuenta}{r.detalle.precio ? ` · $${r.detalle.precio}` : ''}{r.detalle.nueva_fecha ? ` → ${r.detalle.nueva_fecha}` : ''}</div>}
+                  <div style={{display:'flex',gap:8,marginTop:3,alignItems:'center'}}>
+                    <span style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)'}}>{formatHora(r.created_at)}</span>
+                    <span style={{fontSize:9,color:'var(--purple)',background:'rgba(157,78,221,0.12)',padding:'1px 5px',borderRadius:3,fontFamily:'var(--mono)'}}>{r.usuario}</span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 // ─── MODAL NUEVO/AGREGAR SERVICIO ─────────────────────────
 function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
   const [form, setForm] = useState({ nombre: clienteNombre || '', cuenta: '', precio: '', fecha: '', tel: '', notas: '', accesoCliente: '', correoIndividual: '', passIndividual: '' })
@@ -631,6 +744,7 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
       }
 
       onGuardar()
+      await registrarBitacora('admin', 'NUEVO_SERVICIO', 'servicios', svcData.id, { cuenta: form.cuenta, precio: parseFloat(form.precio)||0, fecha: form.fecha }, form.nombre.trim() || clienteNombre)
       const tel = form.tel || form.nombre.replace(/\D/g,'')
 
       // Para servicios individuales, guardar también los datos de la cuenta
@@ -938,6 +1052,7 @@ function ModalRenovar({ servicio, cliente, onRenovar, onCerrar }) {
       if (servicio.perfil_id) {
         await supabase.from('perfiles_espacios').update({ fecha_vencimiento: fecha }).eq('id', servicio.perfil_id)
       }
+      await registrarBitacora('admin', 'RENOVAR', 'servicios', servicio.id, { cuenta: servicio.cuenta, nueva_fecha: fecha, precio: parseFloat(precio)||servicio.precio }, cliente)
       onRenovar(); onCerrar()
     } catch(e) { setError('Error: ' + e.message); setSaving(false) }
   }
@@ -1385,6 +1500,19 @@ function Login({ onLogin }) {
 }
 
 // ─── APP PRINCIPAL ────────────────────────────────────────
+// ─── BITÁCORA ─────────────────────────────────────────────
+async function registrarBitacora(usuario, accion, entidad, entidad_id, detalle, cliente_nombre) {
+  try {
+    await supabase.from('bitacora').insert({
+      usuario, accion,
+      entidad: entidad || null,
+      entidad_id: entidad_id || null,
+      detalle: detalle || null,
+      cliente_nombre: cliente_nombre || null,
+    })
+  } catch(e) { console.warn('Bitácora error:', e) }
+}
+
 const FILTROS = [
   {val:'todos',    label:'Todos'},
   {val:'vencidos', label:'💀 Vencidos'},
@@ -1406,6 +1534,7 @@ function App({ sesion, onLogout }) {
   const [ultimaAct, setUltimaAct] = useState(null)
   const [modalForm, setModalForm] = useState(null)
   const [modalGestorServicios, setModalGestorServicios] = useState(false)
+  const [modalBitacora, setModalBitacora] = useState(false)
   const [modalRenovar, setModalRenovar] = useState(null)
   const [modalCobrarRenovar, setModalCobrarRenovar] = useState(null)
   const [modalEditar, setModalEditar] = useState(null)
@@ -1531,12 +1660,20 @@ function App({ sesion, onLogout }) {
 
   async function marcarCobrado(s) {
     const { error: e } = await supabase.from('servicios').update({ cobrado: fechaHoy() }).eq('id', s.id)
-    if (!e) { cargarDatos(); mostrarToast('Cobro registrado') }
+    if (!e) {
+      cargarDatos()
+      mostrarToast('Cobro registrado')
+      registrarBitacora(sesion.usuario, 'COBRAR', 'servicios', s.id, { cuenta: s.cuenta, precio: s.precio }, s.clientes?.nombre || '')
+    }
   }
 
   async function deshacerCobro(s) {
     const { error: e } = await supabase.from('servicios').update({ cobrado: null, cobrado_en: null, estado: 'PENDIENTE' }).eq('id', s.id)
-    if (!e) { cargarDatos(); mostrarToast('Cobro revertido', 'info') }
+    if (!e) {
+      cargarDatos()
+      mostrarToast('Cobro revertido', 'info')
+      registrarBitacora(sesion.usuario, 'DESHACER_COBRO', 'servicios', s.id, { cuenta: s.cuenta }, s.clientes?.nombre || '')
+    }
   }
 
   async function liberarPerfil(s) {
@@ -1558,20 +1695,26 @@ function App({ sesion, onLogout }) {
     await liberarPerfil(s)
     const notas = s.notas ? 'CANCELADO | ' + s.notas : 'CANCELADO'
     const { error: e } = await supabase.from('servicios').update({ notas, cancelado: true, perfil_id: null }).eq('id', s.id)
-    if (!e) cargarDatos()
+    if (!e) {
+      cargarDatos()
+      registrarBitacora(sesion.usuario, 'CANCELAR', 'servicios', s.id, { cuenta: s.cuenta }, s.clientes?.nombre || '')
+    }
   }
 
   async function eliminarServicio(s) {
     await liberarPerfil(s)
     const { error: e } = await supabase.from('servicios').delete().eq('id', s.id)
-    if (!e) cargarDatos()
+    if (!e) {
+      cargarDatos()
+      registrarBitacora(sesion.usuario, 'ELIMINAR_SERVICIO', 'servicios', s.id, { cuenta: s.cuenta }, s.clientes?.nombre || '')
+    }
   }
 
   async function eliminarCliente(clienteId, serviciosLista) {
-    // Liberar todos los perfiles del cliente antes de eliminar
     for (const s of serviciosLista) await liberarPerfil(s)
     await supabase.from('servicios').delete().in('id', serviciosLista.map(s=>s.id))
     await supabase.from('clientes').delete().eq('id', clienteId)
+    registrarBitacora(sesion.usuario, 'ELIMINAR_CLIENTE', 'clientes', clienteId, { servicios: serviciosLista.length })
     cargarDatos()
   }
 
@@ -1614,6 +1757,7 @@ function App({ sesion, onLogout }) {
 
       {modalForm && <ModalServicio clienteId={modalForm.clienteId} clienteNombre={modalForm.clienteNombre} onGuardar={()=>{cargarDatos();mostrarToast('Servicio guardado')}} onCerrar={()=>setModalForm(null)} />}
       {modalGestorServicios && <ModalGestorServicios onCerrar={()=>setModalGestorServicios(false)} />}
+      {modalBitacora && <ModalBitacora onCerrar={()=>setModalBitacora(false)} />}
       {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={()=>{cargarDatos();mostrarToast('Servicio renovado')}} onCerrar={()=>setModalRenovar(null)} />}
       {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cobrado y renovado ✅')}} onCerrar={()=>setModalCobrarRenovar(null)} />}
       {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cambios guardados')}} onCerrar={()=>setModalEditar(null)} />}
@@ -1651,6 +1795,7 @@ function App({ sesion, onLogout }) {
             <div style={{display:'flex',gap:4}}>
               {esAdmin && <button className="btn btn-primary" style={{padding:'5px 10px',fontSize:11}} onClick={()=>setModalForm({})}>+ Nuevo</button>}
               {esAdmin && <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={()=>setModalGestorServicios(true)} title="Gestionar servicios">⚙️</button>}
+              {esAdmin && <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={()=>setModalBitacora(true)} title="Bitácora">📋</button>}
               <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={cargarDatos} disabled={loading}>{loading?'⏳':'⟳'}</button>
               <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={onLogout}>⏏</button>
             </div>
@@ -2472,7 +2617,23 @@ const chipSt = (active) => ({
 
 // ─── ROOT ─────────────────────────────────────────────────
 export default function Root() {
-  const [sesion, setSesion] = useState(null)
-  if (!sesion) return <Login onLogin={setSesion} />
-  return <App sesion={sesion} onLogout={() => setSesion(null)} />
+  const [sesion, setSesion] = useState(() => {
+    try {
+      const s = localStorage.getItem('streambit_sesion')
+      return s ? JSON.parse(s) : null
+    } catch { return null }
+  })
+
+  function handleLogin(s) {
+    localStorage.setItem('streambit_sesion', JSON.stringify(s))
+    setSesion(s)
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('streambit_sesion')
+    setSesion(null)
+  }
+
+  if (!sesion) return <Login onLogin={handleLogin} />
+  return <App sesion={sesion} onLogout={handleLogout} />
 }
