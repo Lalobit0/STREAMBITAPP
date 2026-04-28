@@ -582,6 +582,140 @@ function ModalGestorServicios({ onCerrar }) {
   )
 }
 
+// ─── MODAL RECORDATORIOS MASIVOS ─────────────────────────
+function ModalRecordatorios({ data, onCerrar }) {
+  const [filtro, setFiltro] = useState('3dias')
+  const [enviados, setEnviados] = useState(new Set())
+
+  const opciones = [
+    { val: 'vencidos', label: '💀 Vencidos',  fn: c => c.dMin !== null && c.dMin < 0 },
+    { val: 'hoy',      label: '🔴 Hoy',       fn: c => c.dMin === 0 },
+    { val: '3dias',    label: '🔴 ≤3 días',   fn: c => c.dMin !== null && c.dMin >= 0 && c.dMin <= 3 },
+    { val: '7dias',    label: '📅 ≤7 días',   fn: c => c.dMin !== null && c.dMin >= 0 && c.dMin <= 7 },
+    { val: 'todos',    label: '📋 Pendientes', fn: c => c.servicios.some(s => !s.cobrado) },
+  ]
+
+  const opActiva = opciones.find(o => o.val === filtro)
+  const clientes = data.filter(c => opActiva?.fn(c) && c.servicios.some(s => !s.cobrado))
+
+  function getMensaje(cliente) {
+    const svcsPendientes = cliente.servicios.filter(s => !s.cobrado)
+    const lineas = svcsPendientes.map(s => {
+      const v = s.vinculada ? ` (${s.vinculada})` : ''
+      return `• ${s.cuenta}${v}: $${parseFloat(s.precio||0).toLocaleString()} MXN`
+    }).join('\n')
+    const total = svcsPendientes.reduce((sum,s) => sum + parseFloat(s.precio||0), 0)
+    const d = cliente.dMin
+    const diasTxt = d===null?'próximamente':d<0?`venció hace ${Math.abs(d)} días`:d===0?'¡HOY!':d===1?'mañana':`en ${d} días`
+    return `Hola! Te recuerdo que tu pago vence *${diasTxt}* 🗓️\n\n${lineas}\n\n*Total: $${total.toLocaleString()} MXN*\n\nCualquier duda escríbenos 😊\n📲 Soporte StreamBit: *664 410 1852*`
+  }
+
+  function enviarUno(cliente) {
+    const tel = (cliente.cliente.telefono || cliente.cliente.nombre).replace(/\D/g,'')
+    if (!tel || tel.length < 10) { alert('Sin teléfono para ' + cliente.cliente.nombre); return }
+    const msg = getMensaje(cliente)
+    window.open(`https://wa.me/52${tel}?text=${encodeURIComponent(msg)}`, '_blank')
+    setEnviados(p => new Set([...p, cliente.cliente.id]))
+  }
+
+  function enviarTodos() {
+    clientes.forEach((c, i) => {
+      setTimeout(() => enviarUno(c), i * 800)
+    })
+  }
+
+  const pendientes = clientes.filter(c => !enviados.has(c.cliente.id))
+
+  return (
+    <Modal onClose={onCerrar}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:17}}>📲 Recordatorios masivos</div>
+          <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{clientes.length} clientes · {enviados.size} enviados</div>
+        </div>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
+      </div>
+
+      {/* Filtro */}
+      <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:12}}>
+        {opciones.map(o => {
+          const cnt = data.filter(c => o.fn(c) && c.servicios.some(s=>!s.cobrado)).length
+          const act = filtro === o.val
+          return (
+            <button key={o.val} onClick={()=>{setFiltro(o.val);setEnviados(new Set())}} style={{
+              padding:'4px 10px',borderRadius:20,cursor:'pointer',fontSize:10,fontWeight:700,
+              border:`1px solid ${act?'var(--cyan)':'var(--border)'}`,
+              background:act?'rgba(0,212,255,0.15)':'var(--bg2)',
+              color:act?'var(--cyan)':'var(--text3)',
+            }}>{o.label} ({cnt})</button>
+          )
+        })}
+      </div>
+
+      {/* Botón enviar todos */}
+      {pendientes.length > 0 && (
+        <button onClick={enviarTodos} style={{
+          width:'100%',background:'#25D366',color:'#fff',border:'none',borderRadius:10,
+          padding:'10px',cursor:'pointer',fontSize:13,fontWeight:700,marginBottom:12,
+        }}>
+          📲 Enviar a todos ({pendientes.length}) en secuencia
+        </button>
+      )}
+      {pendientes.length === 0 && clientes.length > 0 && (
+        <div style={{background:'#001a0e',border:'1px solid #00ff8820',borderRadius:8,padding:'8px 12px',marginBottom:12,fontSize:12,color:'var(--green)',textAlign:'center'}}>
+          ✅ Todos los mensajes enviados
+        </div>
+      )}
+
+      {clientes.length === 0 && (
+        <div style={{textAlign:'center',padding:'20px 0',color:'var(--text3)',fontSize:13}}>
+          No hay clientes en este filtro
+        </div>
+      )}
+
+      {/* Lista de clientes */}
+      <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:380,overflowY:'auto'}}>
+        {clientes.map(c => {
+          const tel = (c.cliente.telefono || c.cliente.nombre).replace(/\D/g,'')
+          const enviado = enviados.has(c.cliente.id)
+          const svcsPend = c.servicios.filter(s=>!s.cobrado)
+          const total = svcsPend.reduce((sum,s)=>sum+parseFloat(s.precio||0),0)
+          return (
+            <div key={c.cliente.id} style={{
+              background: enviado?'#001a0e':'var(--bg2)',
+              border:`1px solid ${enviado?'#00ff8840':'var(--border)'}`,
+              borderRadius:10,padding:'10px 12px',
+              display:'flex',alignItems:'center',gap:10,
+            }}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:2}}>
+                  <span style={{fontSize:12,fontWeight:700,color:enviado?'var(--green)':'var(--text)'}}>{c.cliente.nombre}</span>
+                  {c.dMin !== null && c.dMin < 0 && <span style={{fontSize:9,color:'var(--red)',fontFamily:'var(--mono)',fontWeight:700}}>{Math.abs(c.dMin)}d vencido</span>}
+                  {c.dMin === 0 && <span style={{fontSize:9,color:'var(--red)',fontFamily:'var(--mono)',fontWeight:700}}>¡HOY!</span>}
+                  {c.dMin !== null && c.dMin > 0 && <span style={{fontSize:9,color:'var(--orange)',fontFamily:'var(--mono)'}}>{c.dMin}d</span>}
+                </div>
+                <div style={{fontSize:10,color:'var(--text3)'}}>
+                  {svcsPend.map(s=>s.cuenta).join(', ')} · <span style={{color:'var(--green)',fontWeight:700}}>${total.toLocaleString()}</span>
+                </div>
+                {!tel || tel.length < 10 ? <div style={{fontSize:9,color:'var(--red)',marginTop:2}}>⚠️ Sin teléfono</div> : null}
+              </div>
+              <button onClick={()=>enviarUno(c)} disabled={enviado} style={{
+                background:enviado?'transparent':'#25D366',
+                border:enviado?'1px solid #00ff8840':'none',
+                color:enviado?'var(--green)':'#fff',
+                borderRadius:8,padding:'6px 10px',cursor:enviado?'default':'pointer',
+                fontSize:12,fontWeight:700,flexShrink:0,
+              }}>
+                {enviado ? '✓ Enviado' : '📲'}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </Modal>
+  )
+}
+
 // ─── MODAL BITÁCORA ───────────────────────────────────────
 function ModalBitacora({ onCerrar }) {
   const [registros, setRegistros] = useState([])
@@ -1535,6 +1669,8 @@ function App({ sesion, onLogout }) {
   const [modalForm, setModalForm] = useState(null)
   const [modalGestorServicios, setModalGestorServicios] = useState(false)
   const [modalBitacora, setModalBitacora] = useState(false)
+  const [modalRecordatorios, setModalRecordatorios] = useState(false)
+  const [verDashboard, setVerDashboard] = useState(false)
   const [modalRenovar, setModalRenovar] = useState(null)
   const [modalCobrarRenovar, setModalCobrarRenovar] = useState(null)
   const [modalEditar, setModalEditar] = useState(null)
@@ -1728,6 +1864,18 @@ function App({ sesion, onLogout }) {
   const totalUrg = urgentes7.reduce((s,c) => s + c.total, 0)
   const urgentes3 = data.filter(c => c.dMin !== null && c.dMin >= 0 && c.dMin <= 3).length
 
+  // KPIs adicionales para dashboard
+  const hoy = data.filter(c => c.dMin === 0)
+  const manana = data.filter(c => c.dMin === 1)
+  const vencidos = data.filter(c => c.dMin !== null && c.dMin < 0)
+  const tasaCobro = countCobrados + countPendientes > 0
+    ? Math.round(countCobrados / (countCobrados + countPendientes) * 100) : 0
+
+  // Monto pendiente que vence esta semana
+  const pendienteSemana = data
+    .filter(c => c.dMin !== null && c.dMin >= 0 && c.dMin <= 7)
+    .reduce((sum, c) => sum + c.servicios.filter(s=>!s.cobrado).reduce((a,s)=>a+parseFloat(s.precio||0),0), 0)
+
   const resumenVinc = useMemo(() => {
     const m = new Map()
     data.forEach(({ servicios }) => servicios.forEach(s => {
@@ -1758,6 +1906,7 @@ function App({ sesion, onLogout }) {
       {modalForm && <ModalServicio clienteId={modalForm.clienteId} clienteNombre={modalForm.clienteNombre} onGuardar={()=>{cargarDatos();mostrarToast('Servicio guardado')}} onCerrar={()=>setModalForm(null)} />}
       {modalGestorServicios && <ModalGestorServicios onCerrar={()=>setModalGestorServicios(false)} />}
       {modalBitacora && <ModalBitacora onCerrar={()=>setModalBitacora(false)} />}
+      {modalRecordatorios && <ModalRecordatorios data={data} onCerrar={()=>setModalRecordatorios(false)} />}
       {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={()=>{cargarDatos();mostrarToast('Servicio renovado')}} onCerrar={()=>setModalRenovar(null)} />}
       {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cobrado y renovado ✅')}} onCerrar={()=>setModalCobrarRenovar(null)} />}
       {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cambios guardados')}} onCerrar={()=>setModalEditar(null)} />}
@@ -1796,6 +1945,7 @@ function App({ sesion, onLogout }) {
               {esAdmin && <button className="btn btn-primary" style={{padding:'5px 10px',fontSize:11}} onClick={()=>setModalForm({})}>+ Nuevo</button>}
               {esAdmin && <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={()=>setModalGestorServicios(true)} title="Gestionar servicios">⚙️</button>}
               {esAdmin && <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={()=>setModalBitacora(true)} title="Bitácora">📋</button>}
+              {esAdmin && <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11,color: urgentes3>0?'var(--orange)':'var(--text3)'}} onClick={()=>setModalRecordatorios(true)} title="Recordatorios masivos">📲{urgentes3>0?` ${urgentes3}`:''}</button>}
               <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={cargarDatos} disabled={loading}>{loading?'⏳':'⟳'}</button>
               <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={onLogout}>⏏</button>
             </div>
@@ -1825,6 +1975,24 @@ function App({ sesion, onLogout }) {
               </button>
               {verRes && (
                 <div style={{padding:'0 12px 12px'}}>
+
+                  {/* KPIs urgentes */}
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5,marginBottom:10}}>
+                    <div style={{background:'#1a0008',borderRadius:8,padding:'7px 8px',border:'1px solid #ff336630',textAlign:'center'}}>
+                      <div style={{fontSize:18,fontWeight:900,color:'var(--red)',fontFamily:'var(--mono)'}}>{vencidos.length}</div>
+                      <div style={{fontSize:8,color:'var(--text3)',fontFamily:'var(--mono)',marginTop:1}}>VENCIDOS</div>
+                    </div>
+                    <div style={{background: hoy.length>0?'#1a0008':'var(--bg2)',borderRadius:8,padding:'7px 8px',border:`1px solid ${hoy.length>0?'#ff336640':'var(--border)'}`,textAlign:'center'}}>
+                      <div style={{fontSize:18,fontWeight:900,color:hoy.length>0?'var(--red)':'var(--text3)',fontFamily:'var(--mono)'}}>{hoy.length}</div>
+                      <div style={{fontSize:8,color:'var(--text3)',fontFamily:'var(--mono)',marginTop:1}}>HOY</div>
+                    </div>
+                    <div style={{background:'#1a0800',borderRadius:8,padding:'7px 8px',border:'1px solid #ff8c0030',textAlign:'center'}}>
+                      <div style={{fontSize:18,fontWeight:900,color:'var(--orange)',fontFamily:'var(--mono)'}}>{manana.length}</div>
+                      <div style={{fontSize:8,color:'var(--text3)',fontFamily:'var(--mono)',marginTop:1}}>MAÑANA</div>
+                    </div>
+                  </div>
+
+                  {/* Cobrado vs Pendiente */}
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:8}}>
                     <div style={{background:'#001a0e',borderRadius:8,padding:'8px 12px',border:'1px solid #00ff8830'}}>
                       <div style={{fontSize:9,color:'var(--text3)',marginBottom:3,fontFamily:'var(--mono)'}}>✅ COBRADO</div>
@@ -1837,6 +2005,24 @@ function App({ sesion, onLogout }) {
                       <div style={{fontSize:9,color:'var(--text3)',marginTop:1}}>{countPendientes} servicios</div>
                     </div>
                   </div>
+
+                  {/* Tasa de cobro + por cobrar esta semana */}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:8}}>
+                    <div style={{background:'var(--bg2)',borderRadius:8,padding:'8px 12px',border:'1px solid var(--border)'}}>
+                      <div style={{fontSize:9,color:'var(--text3)',marginBottom:3,fontFamily:'var(--mono)'}}>📊 TASA COBRO</div>
+                      <div style={{fontSize:20,fontWeight:900,color:tasaCobro>=80?'var(--green)':tasaCobro>=50?'var(--orange)':'var(--red)',fontFamily:'var(--mono)'}}>{tasaCobro}%</div>
+                      <div style={{height:3,background:'var(--bg3)',borderRadius:99,overflow:'hidden',marginTop:4}}>
+                        <div style={{height:'100%',borderRadius:99,background:tasaCobro>=80?'var(--green)':tasaCobro>=50?'var(--orange)':'var(--red)',width:`${tasaCobro}%`,transition:'width .4s'}}/>
+                      </div>
+                    </div>
+                    <div style={{background:'#001a14',borderRadius:8,padding:'8px 12px',border:'1px solid #00d4ff20'}}>
+                      <div style={{fontSize:9,color:'var(--text3)',marginBottom:3,fontFamily:'var(--mono)'}}>📅 X COBRAR 7D</div>
+                      <div style={{fontSize:16,fontWeight:800,color:'var(--cyan)',fontFamily:'var(--mono)'}}>${pendienteSemana.toLocaleString()}</div>
+                      <div style={{fontSize:9,color:'var(--text3)',marginTop:1}}>{urgentes7.length} clientes</div>
+                    </div>
+                  </div>
+
+                  {/* Barra progreso */}
                   <div style={{marginBottom:10}}>
                     <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
                       <span style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)'}}>PROGRESO · ${totalMes.toLocaleString()} total</span>
@@ -1846,6 +2032,7 @@ function App({ sesion, onLogout }) {
                       <div style={{height:'100%',borderRadius:99,background:'linear-gradient(90deg,var(--green),var(--cyan))',width:`${totalMes>0?Math.round(totalCobrado/totalMes*100):0}%`,transition:'width .4s ease'}}/>
                     </div>
                   </div>
+
                   <div style={{marginBottom:8}}>
                     <div style={{fontSize:9,color:'var(--purple)',fontWeight:700,marginBottom:5,fontFamily:'var(--mono)'}}>POR VINCULADA</div>
                     {resumenVinc.map(([k,v]) => (
