@@ -1929,7 +1929,7 @@ function App({ sesion, onLogout }) {
               {/* Tabs inline */}
               {esAdmin && (
                 <div style={{display:'flex',gap:3,marginLeft:4}}>
-                  {[{val:'cobros',label:'💳'},{val:'cuentas',label:'🗂️'}].map(t=>(
+                  {[{val:'cobros',label:'💳'},{val:'cuentas',label:'🗂️'},{val:'guias',label:'📖'}].map(t=>(
                     <button key={t.val} onClick={()=>setVista(t.val)} style={{
                       padding:'3px 8px',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:700,
                       background:vista===t.val?'rgba(0,212,255,0.15)':'transparent',
@@ -2132,6 +2132,7 @@ function App({ sesion, onLogout }) {
 
       {/* Vista Cuentas */}
       {vista === 'cuentas' && esAdmin && <CuentasView />}
+      {vista === 'guias' && <GuiasView />}
 
       {/* LISTA */}
       {vista === 'cobros' && (
@@ -2278,6 +2279,363 @@ function App({ sesion, onLogout }) {
           </div>
         )}
       </div>
+      )}
+    </div>
+  )
+}
+
+// ─── GUÍAS DE INSTALACIÓN ─────────────────────────────────
+
+const GUIAS_DATA = {
+  'ARES TV': {
+    emoji: '📡', color: '#ff3366',
+    descripcion: 'IPTV con canales en vivo, películas, series y deportes',
+    credenciales: ['usuario', 'contraseña', 'url'],
+    dispositivos: {
+      'Android / Celular': { emoji:'📱', codigos:['Descarga: 4502591','Alt: 5047948'], pasos:[
+        'Abre Chrome en tu celular',
+        'Ve a la dirección: vetv.xyz/ARESTV.exe — espera que descargue',
+        'Toca el archivo descargado e instala (permite "fuentes desconocidas" si te pide)',
+        'Abre ARES TV e ingresa:\n  🌐 URL: https://arestv.vip:443\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
+        '¡Listo! Disfruta tu contenido 🎬',
+      ]},
+      'Fire TV Stick': { emoji:'🔥', codigos:['Código Downloader: 4502591','Alt: 5047948 / 6296589'], pasos:[
+        'En tu Fire Stick ve a Buscar y escribe "Downloader"',
+        'Instala la app Downloader (ícono naranja)',
+        'Abre Downloader e ingresa el código: 4502591 → toca GO',
+        'Descarga e instala ARES TV',
+        'Abre ARES TV e ingresa:\n  🌐 URL: https://arestv.vip:443\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
+      ]},
+      'Google TV / Chromecast': { emoji:'📺', codigos:['Código: 6296589','Alt: 5047948'], pasos:[
+        'Ve a Google Play Store en tu TV',
+        'Busca "Downloader" e instálala',
+        'Abre Downloader e ingresa el código: 6296589 → GO',
+        'Descarga e instala ARES TV cuando aparezca',
+        'Ingresa en ARES TV:\n  🌐 URL: https://arestv.vip:443\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
+      ]},
+      'Smart TV (Samsung / LG / Vizio)': { emoji:'🖥️', pasos:[
+        'Ve a la tienda de apps de tu TV y busca "IPTV Smarters"',
+        'Instala y abre la app → Agregar usuario',
+        'Selecciona "Login con Xtream" e ingresa:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}\n  🌐 URL: https://arestv.vip:443',
+        'Guarda y disfruta todos los canales 📺',
+      ]},
+      'Roku': { emoji:'🟣', pasos:[
+        'Ve al canal de búsqueda en tu Roku',
+        'Busca "ARES TV 2.0" en el canal store',
+        'Instala y abre la app',
+        'Ingresa:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
+        '¡Listo para disfrutar! 🎉',
+      ]},
+      'iPhone / iPad': { emoji:'🍎', pasos:[
+        'Ve al App Store y busca "IPTV Smarters Player Lite"',
+        'Instala la app (es gratuita)',
+        'Abre → Agregar usuario → "Login con Xtream"',
+        'Ingresa:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}\n  🌐 URL: https://arestv.vip:443',
+        'Guarda y ya puedes ver todo el contenido 📱',
+      ]},
+      'Windows (PC)': { emoji:'💻', pasos:[
+        'Descarga el instalador en: vetv.xyz/ARESTV.exe',
+        'Ejecuta e instala',
+        'Abre ARES TV:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
+        'También puedes usar el web: web-players.xyz/arestv/login',
+      ]},
+      'Mac': { emoji:'🍏', pasos:[
+        'App Store → "IPTV Smarters Player"\nO usa: web-players.xyz/arestv/login',
+        'Ingresa:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}\n  🌐 URL: https://arestv.vip:443',
+      ]},
+    },
+  },
+  'Netflix': {
+    emoji: '🎬', color: '#E50914',
+    descripcion: 'Series y películas en streaming',
+    credenciales: ['correo', 'contraseña', 'perfil', 'pin'],
+    dispositivos: {
+      'Cualquier dispositivo': { emoji:'📱', pasos:[
+        'Descarga Netflix desde tu tienda de apps',
+        'Inicia sesión con:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
+        'Selecciona el perfil: {perfil}',
+        'PIN de perfil si te lo pide: {pin}',
+        '¡A disfrutar! 🍿',
+      ]},
+    },
+  },
+  'Disney': {
+    emoji: '🏰', color: '#0063e5',
+    descripcion: 'Disney+, Marvel, Star Wars y más',
+    credenciales: ['correo', 'contraseña', 'perfil', 'pin'],
+    dispositivos: {
+      'Cualquier dispositivo': { emoji:'📱', pasos:[
+        'Descarga Disney+ desde tu tienda de apps',
+        'Inicia sesión:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
+        'Selecciona tu perfil: {perfil}',
+        'PIN si te pide: {pin}',
+        '¡Disfruta Disney, Marvel y Star Wars! ✨',
+      ]},
+    },
+  },
+  'HBO': {
+    emoji: '👑', color: '#9d4edd',
+    descripcion: 'MAX — series premium y películas',
+    credenciales: ['correo', 'contraseña', 'perfil', 'pin'],
+    dispositivos: {
+      'Cualquier dispositivo': { emoji:'📱', pasos:[
+        'Descarga la app MAX desde tu tienda',
+        'Inicia sesión:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
+        'Selecciona perfil: {perfil}',
+        'PIN de perfil: {pin}',
+      ]},
+    },
+  },
+  'Spotify': {
+    emoji: '🎵', color: '#1DB954',
+    descripcion: 'Música sin límites ni anuncios',
+    credenciales: ['correo_o_tel', 'contraseña'],
+    dispositivos: {
+      'Cualquier dispositivo': { emoji:'📱', pasos:[
+        'Descarga Spotify desde tu tienda de apps',
+        'Toca "Iniciar sesión"',
+        'Ingresa:\n  📧/📱 Correo o tel: {correo_o_tel}\n  🔑 Contraseña: {contraseña}',
+        '¡Música sin anuncios! 🎧',
+      ]},
+    },
+  },
+  'YouTube': {
+    emoji: '▶️', color: '#FF0000',
+    descripcion: 'YouTube Premium — sin anuncios',
+    credenciales: ['correo_google', 'contraseña'],
+    dispositivos: {
+      'Cualquier dispositivo': { emoji:'📱', pasos:[
+        'Abre YouTube → foto de perfil → "Cambiar cuenta"',
+        'Agrega cuenta:\n  📧 Correo Google: {correo_google}\n  🔑 Contraseña: {contraseña}',
+        '¡YouTube sin anuncios y con descargas! ▶️',
+      ]},
+    },
+  },
+  'Office': {
+    emoji: '💼', color: '#D83B01',
+    descripcion: 'Microsoft 365 — Word, Excel, PowerPoint',
+    credenciales: ['correo_microsoft', 'contraseña'],
+    dispositivos: {
+      'PC / Mac': { emoji:'💻', pasos:[
+        'Ve a office.com e inicia sesión:\n  📧 Correo: {correo_microsoft}\n  🔑 Contraseña: {contraseña}',
+        'O descarga las apps desde office.com/setup',
+        '¡Word, Excel, PowerPoint y más! 📊',
+      ]},
+      'Celular': { emoji:'📱', pasos:[
+        'Descarga Word, Excel o PowerPoint desde tu tienda',
+        'Inicia sesión:\n  📧 Correo: {correo_microsoft}\n  🔑 Contraseña: {contraseña}',
+      ]},
+    },
+  },
+  'ChatGPT': {
+    emoji: '🤖', color: '#10a37f',
+    descripcion: 'ChatGPT Plus — IA para todo',
+    credenciales: ['correo', 'contraseña'],
+    dispositivos: {
+      'Web / Celular': { emoji:'🌐', pasos:[
+        'Ve a chatgpt.com o descarga la app de ChatGPT',
+        'Toca "Iniciar sesión"',
+        'Ingresa:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
+        '¡Tienes acceso a GPT-4 y todas las funciones Plus! 🚀',
+      ]},
+    },
+  },
+  'Gemini': {
+    emoji: '✨', color: '#4285F4',
+    descripcion: 'Google Gemini — IA de Google',
+    credenciales: ['correo_google', 'contraseña'],
+    dispositivos: {
+      'Web / Celular': { emoji:'🌐', pasos:[
+        'Ve a gemini.google.com o descarga la app Gemini',
+        'Inicia sesión con cuenta Google:\n  📧 Correo: {correo_google}\n  🔑 Contraseña: {contraseña}',
+        '¡Listo para usar Gemini Advanced! ✨',
+      ]},
+    },
+  },
+  'Grok': {
+    emoji: '⚡', color: '#ffd60a',
+    descripcion: 'Grok — IA de X (Twitter)',
+    credenciales: ['correo', 'contraseña'],
+    dispositivos: {
+      'Web / Celular': { emoji:'🌐', pasos:[
+        'Ve a x.com o descarga la app de X',
+        'Inicia sesión:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
+        'En el menú lateral busca "Grok"',
+        '¡Acceso a Grok activado! ⚡',
+      ]},
+    },
+  },
+}
+
+function interpolar(texto, vars) {
+  return texto.replace(/\{(\w+)\}/g, (_, k) => vars[k] && vars[k].trim() ? vars[k] : `[${k}]`)
+}
+
+const CRED_LABELS = {
+  usuario:'👤 Usuario', contraseña:'🔑 Contraseña', url:'🌐 URL',
+  correo:'📧 Correo', perfil:'📺 Perfil', pin:'🔐 PIN',
+  correo_google:'📧 Correo Google', correo_microsoft:'📧 Correo Microsoft',
+  correo_o_tel:'📧 Correo o teléfono', tel:'📱 Tel cliente (para WA)',
+}
+
+function GuiasView() {
+  const [servicioSel, setServicioSel] = useState(null)
+  const [dispositivoSel, setDispositivoSel] = useState(null)
+  const [vars, setVars] = useState({})
+  const [mostrarMsg, setMostrarMsg] = useState(false)
+  const [copiado, setCopiado] = useState(false)
+  const [buscar, setBuscar] = useState('')
+
+  const guia = servicioSel ? GUIAS_DATA[servicioSel] : null
+  const pasos = guia && dispositivoSel ? guia.dispositivos[dispositivoSel]?.pasos || [] : []
+  const codigos = guia && dispositivoSel ? guia.dispositivos[dispositivoSel]?.codigos || [] : []
+
+  function getMensaje() {
+    if (!guia || !dispositivoSel) return ''
+    const pasosTexto = pasos.map((p,i) => `${i+1}. ${interpolar(p,vars)}`).join('\n')
+    return [
+      `Hola! Aquí los pasos para configurar tu *${servicioSel}* 🎉`,
+      ``,
+      `📱 Dispositivo: *${dispositivoSel}*`,
+      ``,
+      pasosTexto,
+      codigos.length ? `\n📌 ${codigos.join(' | ')}` : null,
+      ``,
+      `Cualquier duda escríbenos 😊`,
+      `📲 Soporte StreamBit: *664 410 1852*`,
+    ].filter(l=>l!==null).join('\n')
+  }
+
+  function copiar() {
+    navigator.clipboard.writeText(getMensaje())
+    setCopiado(true); setTimeout(()=>setCopiado(false),2000)
+  }
+
+  const serviciosFiltrados = Object.keys(GUIAS_DATA).filter(s=>s.toLowerCase().includes(buscar.toLowerCase()))
+
+  return (
+    <div style={{maxWidth:520,margin:'0 auto',padding:'10px 14px 40px'}}>
+      <div style={{fontWeight:800,fontSize:16,marginBottom:12}}>📖 Guías de instalación</div>
+      <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="🔍 Buscar servicio..." style={{marginBottom:12,fontSize:12}} />
+
+      {/* Grid de servicios */}
+      {!servicioSel && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          {serviciosFiltrados.map(s => {
+            const g = GUIAS_DATA[s]
+            return (
+              <button key={s} onClick={()=>{setServicioSel(s);setDispositivoSel(null);setVars({tel:''});setMostrarMsg(false)}} style={{
+                background:'var(--bg2)',border:`1px solid ${g.color}30`,borderRadius:12,
+                padding:'14px 12px',cursor:'pointer',textAlign:'left',transition:'all .15s',
+              }}>
+                <div style={{fontSize:24,marginBottom:6}}>{g.emoji}</div>
+                <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:3}}>{s}</div>
+                <div style={{fontSize:10,color:'var(--text3)',lineHeight:1.3}}>{g.descripcion}</div>
+                <div style={{fontSize:9,color:g.color,marginTop:5,fontFamily:'var(--mono)',fontWeight:700}}>
+                  {Object.keys(g.dispositivos).length} dispositivo{Object.keys(g.dispositivos).length>1?'s':''}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Detalle del servicio */}
+      {servicioSel && guia && (
+        <div>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+            <button onClick={()=>{setServicioSel(null);setDispositivoSel(null)}} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'4px 10px',cursor:'pointer',fontSize:11,color:'var(--text3)'}}>← Volver</button>
+            <span style={{fontSize:20}}>{guia.emoji}</span>
+            <span style={{fontWeight:800,fontSize:15}}>{servicioSel}</span>
+          </div>
+
+          {/* Credenciales */}
+          <div style={{background:'var(--bg2)',border:`1px solid ${guia.color}30`,borderRadius:10,padding:'12px',marginBottom:14}}>
+            <div style={{fontSize:10,color:guia.color,fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>🔐 DATOS PARA PERSONALIZAR</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+              {[...guia.credenciales,'tel'].map(cred => (
+                <div key={cred}>
+                  <label style={{fontSize:9}}>{CRED_LABELS[cred]||cred}</label>
+                  <input value={vars[cred]||''} onChange={e=>setVars(p=>({...p,[cred]:e.target.value}))}
+                    placeholder={cred} style={{fontSize:11,padding:'5px 8px',fontFamily:'var(--mono)'}} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Dispositivos */}
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:7}}>📱 DISPOSITIVO</div>
+            <div style={{display:'flex',flexDirection:'column',gap:5}}>
+              {Object.entries(guia.dispositivos).map(([d,dInfo]) => {
+                const act = dispositivoSel===d
+                return (
+                  <button key={d} onClick={()=>{setDispositivoSel(act?null:d);setMostrarMsg(false)}} style={{
+                    background:act?`${guia.color}15`:'var(--bg2)',
+                    border:`1px solid ${act?guia.color+'50':'var(--border)'}`,
+                    borderRadius:9,padding:'10px 12px',cursor:'pointer',textAlign:'left',
+                    display:'flex',alignItems:'center',gap:8,transition:'all .15s',
+                  }}>
+                    <span style={{fontSize:18}}>{dInfo.emoji}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:act?'var(--text)':'var(--text2)'}}>{d}</span>
+                    {act&&<span style={{marginLeft:'auto',color:guia.color}}>✓</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Pasos */}
+          {dispositivoSel && pasos.length > 0 && (
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>📋 PASOS</div>
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                {pasos.map((p,i)=>(
+                  <div key={i} style={{display:'flex',gap:10,alignItems:'flex-start',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:9,padding:'10px 12px'}}>
+                    <div style={{width:22,height:22,borderRadius:6,background:`${guia.color}20`,border:`1px solid ${guia.color}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:900,color:guia.color,flexShrink:0}}>{i+1}</div>
+                    <div style={{fontSize:12,color:'var(--text)',lineHeight:1.6,whiteSpace:'pre-line',fontFamily:'var(--mono)'}}>{interpolar(p,vars)}</div>
+                  </div>
+                ))}
+              </div>
+              {codigos.length>0 && (
+                <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
+                  {codigos.map((c,i)=>(
+                    <div key={i} style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 10px',fontSize:10,color:'var(--cyan)',fontFamily:'var(--mono)',fontWeight:700}}>{c}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Acciones */}
+          {dispositivoSel && (
+            <div style={{display:'flex',gap:8,marginBottom:10}}>
+              <button onClick={()=>setMostrarMsg(p=>!p)} style={{flex:1,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px',cursor:'pointer',fontSize:12,fontWeight:700,color:'var(--text2)'}}>
+                {mostrarMsg?'🙈 Ocultar':'👁️ Ver mensaje WA'}
+              </button>
+              <button onClick={()=>{
+                const tel = vars.tel?.replace(/\D/g,'')
+                const msg = getMensaje()
+                window.open(tel&&tel.length>=10?`https://wa.me/52${tel}?text=${encodeURIComponent(msg)}`:`https://wa.me/?text=${encodeURIComponent(msg)}`,'_blank')
+              }} style={{flex:1,background:'#25D366',color:'#fff',border:'none',borderRadius:10,padding:'10px',cursor:'pointer',fontSize:12,fontWeight:700}}>
+                📲 Enviar por WhatsApp
+              </button>
+            </div>
+          )}
+
+          {/* Preview mensaje */}
+          {mostrarMsg && dispositivoSel && (
+            <div style={{background:'#0a1a10',border:'1px solid #00ff8820',borderRadius:10,padding:'12px 14px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                <div style={{fontSize:10,color:'var(--green)',fontFamily:'var(--mono)',fontWeight:700}}>MENSAJE WHATSAPP</div>
+                <button onClick={copiar} style={{background:'transparent',border:'1px solid var(--border)',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:10,color:copiado?'var(--green)':'var(--text3)',fontWeight:700}}>
+                  {copiado?'✓ Copiado':'📋 Copiar'}
+                </button>
+              </div>
+              <pre style={{fontSize:11,color:'var(--text2)',lineHeight:1.6,whiteSpace:'pre-wrap',margin:0,fontFamily:'var(--mono)'}}>{getMensaje()}</pre>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
