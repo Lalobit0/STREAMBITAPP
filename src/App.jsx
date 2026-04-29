@@ -2225,19 +2225,17 @@ function App({ sesion, onLogout }) {
                 <span style={{fontSize:10,color:esAdmin?'var(--purple)':'var(--cyan)',fontWeight:600,marginLeft:6,fontFamily:'var(--mono)'}}>{sesion.usuario}</span>
               </div>
               {/* Tabs inline */}
-              {esAdmin && (
-                <div style={{display:'flex',gap:3,marginLeft:4}}>
-                  {[{val:'cobros',label:'💳'},{val:'cuentas',label:'🗂️'},{val:'guias',label:'📖'}].map(t=>(
-                    <button key={t.val} onClick={()=>setVista(t.val)} style={{
-                      padding:'3px 8px',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:700,
-                      background:vista===t.val?'rgba(0,212,255,0.15)':'transparent',
-                      color:vista===t.val?'var(--cyan)':'var(--text3)',
-                      border:`1px solid ${vista===t.val?'var(--cyan)30':'transparent'}`,
-                      transition:'all 0.15s',
-                    }}>{t.label}</button>
-                  ))}
-                </div>
-              )}
+              <div style={{display:'flex',gap:3,marginLeft:4}}>
+                {(esAdmin ? [{val:'cobros',label:'💳'},{val:'cuentas',label:'🗂️'},{val:'guias',label:'📖'}] : [{val:'cobros',label:'💳'},{val:'guias',label:'📖'}]).map(t=>(
+                  <button key={t.val} onClick={()=>setVista(t.val)} style={{
+                    padding:'3px 8px',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:700,
+                    background:vista===t.val?'rgba(0,212,255,0.15)':'transparent',
+                    color:vista===t.val?'var(--cyan)':'var(--text3)',
+                    border:`1px solid ${vista===t.val?'var(--cyan)30':'transparent'}`,
+                    transition:'all 0.15s',
+                  }}>{t.label}</button>
+                ))}
+              </div>
             </div>
             <div style={{display:'flex',gap:4}}>
               {esAdmin && <button className="btn btn-primary" style={{padding:'5px 10px',fontSize:11}} onClick={()=>setModalForm({})}>+ Nuevo</button>}
@@ -2460,7 +2458,7 @@ function App({ sesion, onLogout }) {
 
       {/* Vista Cuentas */}
       {vista === 'cuentas' && esAdmin && <CuentasView />}
-      {vista === 'guias' && <GuiasView />}
+      {vista === 'guias' && <GuiasView esAdmin={esAdmin} />}
 
       {/* LISTA */}
       {vista === 'cobros' && (
@@ -2635,187 +2633,6 @@ function App({ sesion, onLogout }) {
 
 // ─── GUÍAS DE INSTALACIÓN ─────────────────────────────────
 
-const GUIAS_DATA = {
-  'ARES TV': {
-    emoji: '📡', color: '#ff3366',
-    descripcion: 'IPTV con canales en vivo, películas, series y deportes',
-    credenciales: ['usuario', 'contraseña', 'url'],
-    dispositivos: {
-      'Android / Celular': { emoji:'📱', codigos:['Descarga: 4502591','Alt: 5047948'], pasos:[
-        'Abre Chrome en tu celular',
-        'Ve a la dirección: vetv.xyz/ARESTV.exe — espera que descargue',
-        'Toca el archivo descargado e instala (permite "fuentes desconocidas" si te pide)',
-        'Abre ARES TV e ingresa:\n  🌐 URL: https://arestv.vip:443\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
-        '¡Listo! Disfruta tu contenido 🎬',
-      ]},
-      'Fire TV Stick': { emoji:'🔥', codigos:['Código Downloader: 4502591','Alt: 5047948 / 6296589'], pasos:[
-        'En tu Fire Stick ve a Buscar y escribe "Downloader"',
-        'Instala la app Downloader (ícono naranja)',
-        'Abre Downloader e ingresa el código: 4502591 → toca GO',
-        'Descarga e instala ARES TV',
-        'Abre ARES TV e ingresa:\n  🌐 URL: https://arestv.vip:443\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
-      ]},
-      'Google TV / Chromecast': { emoji:'📺', codigos:['Código: 6296589','Alt: 5047948'], pasos:[
-        'Ve a Google Play Store en tu TV',
-        'Busca "Downloader" e instálala',
-        'Abre Downloader e ingresa el código: 6296589 → GO',
-        'Descarga e instala ARES TV cuando aparezca',
-        'Ingresa en ARES TV:\n  🌐 URL: https://arestv.vip:443\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
-      ]},
-      'Smart TV (Samsung / LG / Vizio)': { emoji:'🖥️', pasos:[
-        'Ve a la tienda de apps de tu TV y busca "IPTV Smarters"',
-        'Instala y abre la app → Agregar usuario',
-        'Selecciona "Login con Xtream" e ingresa:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}\n  🌐 URL: https://arestv.vip:443',
-        'Guarda y disfruta todos los canales 📺',
-      ]},
-      'Roku': { emoji:'🟣', pasos:[
-        'Ve al canal de búsqueda en tu Roku',
-        'Busca "ARES TV 2.0" en el canal store',
-        'Instala y abre la app',
-        'Ingresa:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
-        '¡Listo para disfrutar! 🎉',
-      ]},
-      'iPhone / iPad': { emoji:'🍎', pasos:[
-        'Ve al App Store y busca "IPTV Smarters Player Lite"',
-        'Instala la app (es gratuita)',
-        'Abre → Agregar usuario → "Login con Xtream"',
-        'Ingresa:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}\n  🌐 URL: https://arestv.vip:443',
-        'Guarda y ya puedes ver todo el contenido 📱',
-      ]},
-      'Windows (PC)': { emoji:'💻', pasos:[
-        'Descarga el instalador en: vetv.xyz/ARESTV.exe',
-        'Ejecuta e instala',
-        'Abre ARES TV:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}',
-        'También puedes usar el web: web-players.xyz/arestv/login',
-      ]},
-      'Mac': { emoji:'🍏', pasos:[
-        'App Store → "IPTV Smarters Player"\nO usa: web-players.xyz/arestv/login',
-        'Ingresa:\n  👤 Usuario: {usuario}\n  🔑 Contraseña: {contraseña}\n  🌐 URL: https://arestv.vip:443',
-      ]},
-    },
-  },
-  'Netflix': {
-    emoji: '🎬', color: '#E50914',
-    descripcion: 'Series y películas en streaming',
-    credenciales: ['correo', 'contraseña', 'perfil', 'pin'],
-    dispositivos: {
-      'Cualquier dispositivo': { emoji:'📱', pasos:[
-        'Descarga Netflix desde tu tienda de apps',
-        'Inicia sesión con:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
-        'Selecciona el perfil: {perfil}',
-        'PIN de perfil si te lo pide: {pin}',
-        '¡A disfrutar! 🍿',
-      ]},
-    },
-  },
-  'Disney': {
-    emoji: '🏰', color: '#0063e5',
-    descripcion: 'Disney+, Marvel, Star Wars y más',
-    credenciales: ['correo', 'contraseña', 'perfil', 'pin'],
-    dispositivos: {
-      'Cualquier dispositivo': { emoji:'📱', pasos:[
-        'Descarga Disney+ desde tu tienda de apps',
-        'Inicia sesión:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
-        'Selecciona tu perfil: {perfil}',
-        'PIN si te pide: {pin}',
-        '¡Disfruta Disney, Marvel y Star Wars! ✨',
-      ]},
-    },
-  },
-  'HBO': {
-    emoji: '👑', color: '#9d4edd',
-    descripcion: 'MAX — series premium y películas',
-    credenciales: ['correo', 'contraseña', 'perfil', 'pin'],
-    dispositivos: {
-      'Cualquier dispositivo': { emoji:'📱', pasos:[
-        'Descarga la app MAX desde tu tienda',
-        'Inicia sesión:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
-        'Selecciona perfil: {perfil}',
-        'PIN de perfil: {pin}',
-      ]},
-    },
-  },
-  'Spotify': {
-    emoji: '🎵', color: '#1DB954',
-    descripcion: 'Música sin límites ni anuncios',
-    credenciales: ['correo_o_tel', 'contraseña'],
-    dispositivos: {
-      'Cualquier dispositivo': { emoji:'📱', pasos:[
-        'Descarga Spotify desde tu tienda de apps',
-        'Toca "Iniciar sesión"',
-        'Ingresa:\n  📧/📱 Correo o tel: {correo_o_tel}\n  🔑 Contraseña: {contraseña}',
-        '¡Música sin anuncios! 🎧',
-      ]},
-    },
-  },
-  'YouTube': {
-    emoji: '▶️', color: '#FF0000',
-    descripcion: 'YouTube Premium — sin anuncios',
-    credenciales: ['correo_google', 'contraseña'],
-    dispositivos: {
-      'Cualquier dispositivo': { emoji:'📱', pasos:[
-        'Abre YouTube → foto de perfil → "Cambiar cuenta"',
-        'Agrega cuenta:\n  📧 Correo Google: {correo_google}\n  🔑 Contraseña: {contraseña}',
-        '¡YouTube sin anuncios y con descargas! ▶️',
-      ]},
-    },
-  },
-  'Office': {
-    emoji: '💼', color: '#D83B01',
-    descripcion: 'Microsoft 365 — Word, Excel, PowerPoint',
-    credenciales: ['correo_microsoft', 'contraseña'],
-    dispositivos: {
-      'PC / Mac': { emoji:'💻', pasos:[
-        'Ve a office.com e inicia sesión:\n  📧 Correo: {correo_microsoft}\n  🔑 Contraseña: {contraseña}',
-        'O descarga las apps desde office.com/setup',
-        '¡Word, Excel, PowerPoint y más! 📊',
-      ]},
-      'Celular': { emoji:'📱', pasos:[
-        'Descarga Word, Excel o PowerPoint desde tu tienda',
-        'Inicia sesión:\n  📧 Correo: {correo_microsoft}\n  🔑 Contraseña: {contraseña}',
-      ]},
-    },
-  },
-  'ChatGPT': {
-    emoji: '🤖', color: '#10a37f',
-    descripcion: 'ChatGPT Plus — IA para todo',
-    credenciales: ['correo', 'contraseña'],
-    dispositivos: {
-      'Web / Celular': { emoji:'🌐', pasos:[
-        'Ve a chatgpt.com o descarga la app de ChatGPT',
-        'Toca "Iniciar sesión"',
-        'Ingresa:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
-        '¡Tienes acceso a GPT-4 y todas las funciones Plus! 🚀',
-      ]},
-    },
-  },
-  'Gemini': {
-    emoji: '✨', color: '#4285F4',
-    descripcion: 'Google Gemini — IA de Google',
-    credenciales: ['correo_google', 'contraseña'],
-    dispositivos: {
-      'Web / Celular': { emoji:'🌐', pasos:[
-        'Ve a gemini.google.com o descarga la app Gemini',
-        'Inicia sesión con cuenta Google:\n  📧 Correo: {correo_google}\n  🔑 Contraseña: {contraseña}',
-        '¡Listo para usar Gemini Advanced! ✨',
-      ]},
-    },
-  },
-  'Grok': {
-    emoji: '⚡', color: '#ffd60a',
-    descripcion: 'Grok — IA de X (Twitter)',
-    credenciales: ['correo', 'contraseña'],
-    dispositivos: {
-      'Web / Celular': { emoji:'🌐', pasos:[
-        'Ve a x.com o descarga la app de X',
-        'Inicia sesión:\n  📧 Correo: {correo}\n  🔑 Contraseña: {contraseña}',
-        'En el menú lateral busca "Grok"',
-        '¡Acceso a Grok activado! ⚡',
-      ]},
-    },
-  },
-}
-
 function interpolar(texto, vars) {
   return texto.replace(/\{(\w+)\}/g, (_, k) => vars[k] && vars[k].trim() ? vars[k] : `[${k}]`)
 }
@@ -2827,7 +2644,153 @@ const CRED_LABELS = {
   correo_o_tel:'📧 Correo o teléfono', tel:'📱 Tel cliente (para WA)',
 }
 
-function GuiasView() {
+// ─── MODAL EDITOR DE GUÍA ─────────────────────────────────
+function ModalEditorGuia({ guia, onGuardar, onCerrar }) {
+  const esNueva = !guia?.id
+  const [form, setForm] = useState({
+    servicio: guia?.servicio || '',
+    emoji: guia?.emoji || '📺',
+    color: guia?.color || '#00d4ff',
+    descripcion: guia?.descripcion || '',
+    credenciales: guia?.credenciales ? guia.credenciales.join(', ') : '',
+  })
+  const [dispositivos, setDispositivos] = useState(
+    guia?.dispositivos ? JSON.parse(JSON.stringify(guia.dispositivos)) : []
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const set = (k,v) => setForm(p=>({...p,[k]:v}))
+
+  function addDispositivo() {
+    setDispositivos(p => [...p, { nombre:'', emoji:'📱', codigos:[], pasos:[''] }])
+  }
+  function removeDispositivo(i) { setDispositivos(p => p.filter((_,idx)=>idx!==i)) }
+  function updateDispositivo(i, k, v) { setDispositivos(p => p.map((d,idx)=>idx===i?{...d,[k]:v}:d)) }
+  function addPaso(di) { setDispositivos(p => p.map((d,i)=>i===di?{...d,pasos:[...d.pasos,'']}:d)) }
+  function updatePaso(di,pi,v) { setDispositivos(p => p.map((d,i)=>i===di?{...d,pasos:d.pasos.map((p2,j)=>j===pi?v:p2)}:d)) }
+  function removePaso(di,pi) { setDispositivos(p => p.map((d,i)=>i===di?{...d,pasos:d.pasos.filter((_,j)=>j!==pi)}:d)) }
+
+  async function guardar() {
+    if (!form.servicio.trim()) return setError('El nombre del servicio es obligatorio')
+    setSaving(true); setError('')
+    const payload = {
+      servicio: form.servicio.trim(),
+      emoji: form.emoji.trim() || '📺',
+      color: form.color || '#00d4ff',
+      descripcion: form.descripcion.trim() || null,
+      credenciales: form.credenciales ? form.credenciales.split(',').map(s=>s.trim()).filter(Boolean) : [],
+      dispositivos: dispositivos.filter(d => d.nombre.trim()),
+      activo: true,
+    }
+    try {
+      if (esNueva) {
+        const { error: e } = await supabase.from('guias').insert(payload)
+        if (e) throw e
+      } else {
+        const { error: e } = await supabase.from('guias').update(payload).eq('id', guia.id)
+        if (e) throw e
+      }
+      onGuardar(); onCerrar()
+    } catch(e) { setError(e.message); setSaving(false) }
+  }
+
+  const inputSt = { fontSize:12, padding:'5px 8px' }
+
+  return (
+    <Modal onClose={onCerrar}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div style={{fontWeight:800,fontSize:16}}>{esNueva ? '➕ Nueva guía' : `✏️ Editar: ${guia.servicio}`}</div>
+        <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
+      </div>
+
+      {/* Info básica */}
+      <div style={{display:'grid',gridTemplateColumns:'60px 1fr',gap:8,marginBottom:10}}>
+        <div>
+          <label style={{fontSize:9}}>EMOJI</label>
+          <input value={form.emoji} onChange={e=>set('emoji',e.target.value)} style={{...inputSt,textAlign:'center',fontSize:20}} />
+        </div>
+        <div>
+          <label style={{fontSize:9}}>NOMBRE DEL SERVICIO *</label>
+          <input value={form.servicio} onChange={e=>set('servicio',e.target.value)} placeholder="ej: Netflix, ARES TV..." style={inputSt} />
+        </div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 80px',gap:8,marginBottom:10}}>
+        <div>
+          <label style={{fontSize:9}}>DESCRIPCIÓN</label>
+          <input value={form.descripcion} onChange={e=>set('descripcion',e.target.value)} placeholder="ej: IPTV con canales en vivo..." style={inputSt} />
+        </div>
+        <div>
+          <label style={{fontSize:9}}>COLOR</label>
+          <input type="color" value={form.color} onChange={e=>set('color',e.target.value)}
+            style={{width:'100%',height:34,borderRadius:6,border:'1px solid var(--border)',background:'none',cursor:'pointer',padding:2}} />
+        </div>
+      </div>
+      <div style={{marginBottom:14}}>
+        <label style={{fontSize:9}}>CREDENCIALES (separadas por coma)</label>
+        <input value={form.credenciales} onChange={e=>set('credenciales',e.target.value)}
+          placeholder="ej: usuario, contraseña, perfil, pin" style={{...inputSt,fontFamily:'var(--mono)'}} />
+        <div style={{fontSize:9,color:'var(--text3)',marginTop:3}}>
+          Opciones: usuario, contraseña, url, correo, perfil, pin, correo_google, correo_microsoft, correo_o_tel
+        </div>
+      </div>
+
+      {/* Dispositivos */}
+      <div style={{marginBottom:10}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <label style={{fontSize:10,fontWeight:700,color:'var(--cyan)'}}>📱 DISPOSITIVOS</label>
+          <button onClick={addDispositivo} style={{background:'rgba(0,212,255,0.1)',border:'1px solid var(--cyan)',borderRadius:6,padding:'3px 8px',cursor:'pointer',fontSize:10,color:'var(--cyan)',fontWeight:700}}>+ Agregar</button>
+        </div>
+        <div style={{maxHeight:320,overflowY:'auto',display:'flex',flexDirection:'column',gap:8}}>
+          {dispositivos.map((d,di) => (
+            <div key={di} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 12px'}}>
+              <div style={{display:'grid',gridTemplateColumns:'50px 1fr auto',gap:6,marginBottom:8,alignItems:'end'}}>
+                <div>
+                  <label style={{fontSize:9}}>EMOJI</label>
+                  <input value={d.emoji} onChange={e=>updateDispositivo(di,'emoji',e.target.value)} style={{...inputSt,textAlign:'center',fontSize:16}} />
+                </div>
+                <div>
+                  <label style={{fontSize:9}}>NOMBRE DEL DISPOSITIVO</label>
+                  <input value={d.nombre} onChange={e=>updateDispositivo(di,'nombre',e.target.value)} placeholder="ej: Fire TV Stick" style={inputSt} />
+                </div>
+                <button onClick={()=>removeDispositivo(di)} style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:14,paddingBottom:4}}>🗑️</button>
+              </div>
+              <div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                  <label style={{fontSize:9}}>PASOS</label>
+                  <button onClick={()=>addPaso(di)} style={{background:'none',border:'1px solid var(--border)',borderRadius:5,padding:'1px 6px',cursor:'pointer',fontSize:9,color:'var(--text3)'}}>+ Paso</button>
+                </div>
+                {d.pasos.map((p,pi) => (
+                  <div key={pi} style={{display:'flex',gap:5,marginBottom:4,alignItems:'flex-start'}}>
+                    <div style={{width:18,height:18,borderRadius:4,background:'var(--bg3)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:'var(--text3)',flexShrink:0,marginTop:6}}>{pi+1}</div>
+                    <textarea value={p} onChange={e=>updatePaso(di,pi,e.target.value)}
+                      style={{flex:1,fontSize:11,padding:'4px 7px',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,color:'var(--text)',resize:'vertical',minHeight:36,fontFamily:'var(--mono)',lineHeight:1.4}}
+                      rows={2} placeholder={`Paso ${pi+1}... usa {usuario} {contraseña} etc.`} />
+                    <button onClick={()=>removePaso(di,pi)} style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:11,marginTop:4,opacity:0.6}}>✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          {dispositivos.length === 0 && (
+            <div style={{textAlign:'center',padding:'16px 0',color:'var(--text3)',fontSize:12}}>
+              Sin dispositivos — toca "+ Agregar" para añadir uno
+            </div>
+          )}
+        </div>
+      </div>
+
+      {error && <div style={{color:'var(--red)',fontSize:11,marginBottom:10}}>⚠️ {error}</div>}
+      <button onClick={guardar} disabled={saving} className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:12,fontSize:14}}>
+        {saving ? 'Guardando...' : esNueva ? '✓ Crear guía' : '✓ Guardar cambios'}
+      </button>
+    </Modal>
+  )
+}
+
+// ─── GUÍAS VIEW ───────────────────────────────────────────
+function GuiasView({ esAdmin }) {
+  const [guias, setGuias] = useState([])
+  const [loading, setLoading] = useState(true)
   const [servicioSel, setServicioSel] = useState(null)
   const [dispositivoSel, setDispositivoSel] = useState(null)
   const [vars, setVars] = useState({})
@@ -2837,29 +2800,38 @@ function GuiasView() {
   const [buscarCliente, setBuscarCliente] = useState('')
   const [clientesEncontrados, setClientesEncontrados] = useState([])
   const [buscandoCliente, setBuscandoCliente] = useState(false)
+  const [editando, setEditando] = useState(null) // null | guia object | 'nueva'
 
-  // Buscar cliente en BD para auto-rellenar datos
+  async function cargarGuias() {
+    setLoading(true)
+    const { data } = await supabase.from('guias').select('*').eq('activo', true).order('orden')
+    setGuias(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { cargarGuias() }, [])
+
+  async function eliminarGuia(id) {
+    if (!confirm('¿Eliminar esta guía?')) return
+    await supabase.from('guias').update({ activo: false }).eq('id', id)
+    cargarGuias()
+    if (servicioSel?.id === id) setServicioSel(null)
+  }
+
   async function buscarClienteEnBD(q) {
     if (!q || q.length < 2) { setClientesEncontrados([]); return }
     setBuscandoCliente(true)
-    const { data } = await supabase
-      .from('clientes')
-      .select('id, nombre, telefono')
-      .ilike('nombre', `%${q}%`)
-      .limit(5)
+    const { data } = await supabase.from('clientes').select('id, nombre, telefono').ilike('nombre', `%${q}%`).limit(5)
     setClientesEncontrados(data || [])
     setBuscandoCliente(false)
   }
 
   async function seleccionarCliente(c) {
-    // Buscar el servicio más reciente del cliente para auto-rellenar
     const { data: svcs } = await supabase
       .from('servicios')
       .select('*, perfiles_espacios!servicios_perfil_id_fkey(perfil, pin, cuentas_maestras(correo, password))')
-      .eq('cliente_id', c.id)
-      .eq('cancelado', false)
-      .order('fecha_vencimiento', { ascending: false })
-      .limit(1)
+      .eq('cliente_id', c.id).eq('cancelado', false)
+      .order('fecha_vencimiento', { ascending: false }).limit(1)
     const svc = svcs?.[0]
     const perfil = svc?.perfiles_espacios
     const cm = perfil?.cuentas_maestras
@@ -2877,17 +2849,20 @@ function GuiasView() {
     setClientesEncontrados([])
   }
 
-  const guia = servicioSel ? GUIAS_DATA[servicioSel] : null
-  const pasos = guia && dispositivoSel ? guia.dispositivos[dispositivoSel]?.pasos || [] : []
-  const codigos = guia && dispositivoSel ? guia.dispositivos[dispositivoSel]?.codigos || [] : []
+  const guia = servicioSel
+  const dispositivos = guia?.dispositivos ? guia.dispositivos : []
+  const dispActivo = dispositivoSel !== null ? dispositivos[dispositivoSel] : null
+  const pasos = dispActivo?.pasos || []
+  const codigos = dispActivo?.codigos || []
+  const credenciales = guia?.credenciales || []
 
   function getMensaje() {
-    if (!guia || !dispositivoSel) return ''
+    if (!guia || !dispActivo) return ''
     const pasosTexto = pasos.map((p,i) => `${i+1}. ${interpolar(p,vars)}`).join('\n')
     return [
-      `Hola! Aquí los pasos para configurar tu *${servicioSel}* 🎉`,
+      `Hola! Aquí los pasos para configurar tu *${guia.servicio}* 🎉`,
       ``,
-      `📱 Dispositivo: *${dispositivoSel}*`,
+      `📱 Dispositivo: *${dispActivo.nombre}*`,
       ``,
       pasosTexto,
       codigos.length ? `\n📌 ${codigos.join(' | ')}` : null,
@@ -2902,33 +2877,63 @@ function GuiasView() {
     setCopiado(true); setTimeout(()=>setCopiado(false),2000)
   }
 
-  const serviciosFiltrados = Object.keys(GUIAS_DATA).filter(s=>s.toLowerCase().includes(buscar.toLowerCase()))
+  const guiasFiltradas = guias.filter(g => g.servicio.toLowerCase().includes(buscar.toLowerCase()))
+
+  // Si está editando, mostrar el editor
+  if (editando !== null) {
+    return <ModalEditorGuia
+      guia={editando === 'nueva' ? null : editando}
+      onGuardar={() => { cargarGuias(); setEditando(null) }}
+      onCerrar={() => setEditando(null)}
+    />
+  }
 
   return (
     <div style={{maxWidth:520,margin:'0 auto',padding:'10px 14px 40px'}}>
-      <div style={{fontWeight:800,fontSize:16,marginBottom:12}}>📖 Guías de instalación</div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div style={{fontWeight:800,fontSize:16}}>📖 Guías de instalación</div>
+        {esAdmin && (
+          <button onClick={()=>setEditando('nueva')} className="btn btn-primary" style={{padding:'5px 10px',fontSize:11}}>
+            + Nueva guía
+          </button>
+        )}
+      </div>
       <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="🔍 Buscar servicio..." style={{marginBottom:12,fontSize:12}} />
 
       {/* Grid de servicios */}
       {!servicioSel && (
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-          {serviciosFiltrados.map(s => {
-            const g = GUIAS_DATA[s]
-            return (
-              <button key={s} onClick={()=>{setServicioSel(s);setDispositivoSel(null);setVars({tel:''});setMostrarMsg(false)}} style={{
-                background:'var(--bg2)',border:`1px solid ${g.color}30`,borderRadius:12,
-                padding:'14px 12px',cursor:'pointer',textAlign:'left',transition:'all .15s',
-              }}>
-                <div style={{fontSize:24,marginBottom:6}}>{g.emoji}</div>
-                <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:3}}>{s}</div>
-                <div style={{fontSize:10,color:'var(--text3)',lineHeight:1.3}}>{g.descripcion}</div>
-                <div style={{fontSize:9,color:g.color,marginTop:5,fontFamily:'var(--mono)',fontWeight:700}}>
-                  {Object.keys(g.dispositivos).length} dispositivo{Object.keys(g.dispositivos).length>1?'s':''}
-                </div>
-              </button>
-            )
-          })}
-        </div>
+        loading ? (
+          <div style={{textAlign:'center',padding:'40px 0',color:'var(--text3)',fontFamily:'var(--mono)',fontSize:12}}>⏳ Cargando guías...</div>
+        ) : (
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            {guiasFiltradas.map(g => (
+              <div key={g.id} style={{position:'relative'}}>
+                <button onClick={()=>{setServicioSel(g);setDispositivoSel(null);setVars({tel:''});setMostrarMsg(false)}} style={{
+                  width:'100%',background:'var(--bg2)',border:`1px solid ${g.color}30`,borderRadius:12,
+                  padding:'14px 12px',cursor:'pointer',textAlign:'left',transition:'all .15s',
+                }}>
+                  <div style={{fontSize:24,marginBottom:6}}>{g.emoji}</div>
+                  <div style={{fontSize:13,fontWeight:800,color:'var(--text)',marginBottom:3}}>{g.servicio}</div>
+                  <div style={{fontSize:10,color:'var(--text3)',lineHeight:1.3}}>{g.descripcion}</div>
+                  <div style={{fontSize:9,color:g.color,marginTop:5,fontFamily:'var(--mono)',fontWeight:700}}>
+                    {g.dispositivos?.length || 0} dispositivo{g.dispositivos?.length !== 1 ? 's' : ''}
+                  </div>
+                </button>
+                {esAdmin && (
+                  <div style={{position:'absolute',top:6,right:6,display:'flex',gap:3}}>
+                    <button onClick={e=>{e.stopPropagation();setEditando(g)}} style={{background:'rgba(0,212,255,0.15)',border:'1px solid var(--cyan)',borderRadius:5,width:22,height:22,cursor:'pointer',fontSize:10,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--cyan)'}}>✏️</button>
+                    <button onClick={e=>{e.stopPropagation();eliminarGuia(g.id)}} style={{background:'rgba(255,51,102,0.15)',border:'1px solid var(--red)',borderRadius:5,width:22,height:22,cursor:'pointer',fontSize:10,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--red)'}}>🗑️</button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {guiasFiltradas.length === 0 && (
+              <div style={{gridColumn:'1/-1',textAlign:'center',padding:'30px 0',color:'var(--text3)',fontSize:12}}>
+                Sin guías — {esAdmin ? 'toca "+ Nueva guía" para crear una' : 'aún no hay guías disponibles'}
+              </div>
+            )}
+          </div>
+        )
       )}
 
       {/* Detalle del servicio */}
@@ -2937,10 +2942,13 @@ function GuiasView() {
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
             <button onClick={()=>{setServicioSel(null);setDispositivoSel(null)}} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'4px 10px',cursor:'pointer',fontSize:11,color:'var(--text3)'}}>← Volver</button>
             <span style={{fontSize:20}}>{guia.emoji}</span>
-            <span style={{fontWeight:800,fontSize:15}}>{servicioSel}</span>
+            <span style={{fontWeight:800,fontSize:15}}>{guia.servicio}</span>
+            {esAdmin && (
+              <button onClick={()=>setEditando(guia)} style={{marginLeft:'auto',background:'rgba(0,212,255,0.1)',border:'1px solid var(--cyan)',borderRadius:6,padding:'3px 8px',cursor:'pointer',fontSize:10,color:'var(--cyan)'}}>✏️ Editar</button>
+            )}
           </div>
 
-          {/* Buscar cliente para auto-rellenar */}
+          {/* Buscar cliente */}
           <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 12px',marginBottom:10}}>
             <div style={{fontSize:10,color:'var(--cyan)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:6}}>🔍 BUSCAR CLIENTE (auto-rellena datos)</div>
             <div style={{position:'relative'}}>
@@ -2960,43 +2968,50 @@ function GuiasView() {
           </div>
 
           {/* Credenciales */}
-          <div style={{background:'var(--bg2)',border:`1px solid ${guia.color}30`,borderRadius:10,padding:'12px',marginBottom:14}}>
-            <div style={{fontSize:10,color:guia.color,fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>🔐 DATOS PARA PERSONALIZAR</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-              {[...guia.credenciales,'tel'].map(cred => (
-                <div key={cred}>
-                  <label style={{fontSize:9}}>{CRED_LABELS[cred]||cred}</label>
-                  <input value={vars[cred]||''} onChange={e=>setVars(p=>({...p,[cred]:e.target.value}))}
-                    placeholder={cred} style={{fontSize:11,padding:'5px 8px',fontFamily:'var(--mono)'}} />
-                </div>
-              ))}
+          {credenciales.length > 0 && (
+            <div style={{background:'var(--bg2)',border:`1px solid ${guia.color}30`,borderRadius:10,padding:'12px',marginBottom:12}}>
+              <div style={{fontSize:10,color:guia.color,fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>🔐 DATOS PARA PERSONALIZAR</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                {[...credenciales,'tel'].map(cred => (
+                  <div key={cred}>
+                    <label style={{fontSize:9}}>{CRED_LABELS[cred]||cred}</label>
+                    <input value={vars[cred]||''} onChange={e=>setVars(p=>({...p,[cred]:e.target.value}))}
+                      placeholder={cred} style={{fontSize:11,padding:'5px 8px',fontFamily:'var(--mono)'}} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Dispositivos */}
           <div style={{marginBottom:14}}>
             <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:7}}>📱 DISPOSITIVO</div>
             <div style={{display:'flex',flexDirection:'column',gap:5}}>
-              {Object.entries(guia.dispositivos).map(([d,dInfo]) => {
-                const act = dispositivoSel===d
+              {dispositivos.map((d,i) => {
+                const act = dispositivoSel===i
                 return (
-                  <button key={d} onClick={()=>{setDispositivoSel(act?null:d);setMostrarMsg(false)}} style={{
+                  <button key={i} onClick={()=>{setDispositivoSel(act?null:i);setMostrarMsg(false)}} style={{
                     background:act?`${guia.color}15`:'var(--bg2)',
                     border:`1px solid ${act?guia.color+'50':'var(--border)'}`,
                     borderRadius:9,padding:'10px 12px',cursor:'pointer',textAlign:'left',
                     display:'flex',alignItems:'center',gap:8,transition:'all .15s',
                   }}>
-                    <span style={{fontSize:18}}>{dInfo.emoji}</span>
-                    <span style={{fontSize:12,fontWeight:700,color:act?'var(--text)':'var(--text2)'}}>{d}</span>
+                    <span style={{fontSize:18}}>{d.emoji}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:act?'var(--text)':'var(--text2)'}}>{d.nombre}</span>
                     {act&&<span style={{marginLeft:'auto',color:guia.color}}>✓</span>}
                   </button>
                 )
               })}
+              {dispositivos.length === 0 && (
+                <div style={{textAlign:'center',padding:'12px 0',color:'var(--text3)',fontSize:12}}>
+                  Sin dispositivos en esta guía
+                </div>
+              )}
             </div>
           </div>
 
           {/* Pasos */}
-          {dispositivoSel && pasos.length > 0 && (
+          {dispActivo && pasos.length > 0 && (
             <div style={{marginBottom:14}}>
               <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>📋 PASOS</div>
               <div style={{display:'flex',flexDirection:'column',gap:5}}>
@@ -3018,7 +3033,7 @@ function GuiasView() {
           )}
 
           {/* Acciones */}
-          {dispositivoSel && (
+          {dispActivo && (
             <div style={{display:'flex',gap:8,marginBottom:10}}>
               <button onClick={()=>setMostrarMsg(p=>!p)} style={{flex:1,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px',cursor:'pointer',fontSize:12,fontWeight:700,color:'var(--text2)'}}>
                 {mostrarMsg?'🙈 Ocultar':'👁️ Ver mensaje WA'}
@@ -3033,8 +3048,8 @@ function GuiasView() {
             </div>
           )}
 
-          {/* Preview mensaje */}
-          {mostrarMsg && dispositivoSel && (
+          {/* Preview */}
+          {mostrarMsg && dispActivo && (
             <div style={{background:'#0a1a10',border:'1px solid #00ff8820',borderRadius:10,padding:'12px 14px'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                 <div style={{fontSize:10,color:'var(--green)',fontFamily:'var(--mono)',fontWeight:700}}>MENSAJE WHATSAPP</div>
@@ -3050,6 +3065,7 @@ function GuiasView() {
     </div>
   )
 }
+
 
 // ─── CUENTAS VIEW ──────────────────────────────────────────
 function CuentasView() {
