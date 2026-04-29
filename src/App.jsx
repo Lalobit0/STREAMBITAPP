@@ -1502,6 +1502,182 @@ function ModalEditarCliente({ cliente, serviciosCliente, onGuardar, onCerrar }) 
 }
 
 // ─── MODAL HISTORIAL CLIENTE ──────────────────────────────
+// ─── MODAL CALCULADORA DE DIVISAS ────────────────────────
+function ModalCalculadora({ onCerrar }) {
+  const [tasas, setTasas] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [monto, setMonto] = useState('')
+  const [monedaOrigen, setMonedaOrigen] = useState('USD')
+  const [ultimaAct, setUltimaAct] = useState(null)
+
+  const MONEDAS = [
+    { code: 'USD', nombre: 'Dólar estadounidense', emoji: '🇺🇸', simbolo: '$' },
+    { code: 'COP', nombre: 'Peso colombiano',      emoji: '🇨🇴', simbolo: '$' },
+    { code: 'MXN', nombre: 'Peso mexicano',         emoji: '🇲🇽', simbolo: '$' },
+  ]
+
+  async function cargarTasas() {
+    setLoading(true); setError(null)
+    try {
+      // API gratuita sin key — base MXN
+      const res = await fetch('https://open.er-api.com/v6/latest/MXN')
+      const json = await res.json()
+      if (json.result === 'success') {
+        setTasas(json.rates)
+        setUltimaAct(new Date())
+      } else throw new Error('Error en API')
+    } catch(e) {
+      setError('No se pudo obtener el tipo de cambio. Intenta de nuevo.')
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => { cargarTasas() }, [])
+
+  // Convertir monedaOrigen → MXN
+  function convertirAMXN(cantidad, origen) {
+    if (!tasas || !cantidad) return null
+    if (origen === 'MXN') return parseFloat(cantidad)
+    // tasas está en base MXN, entonces MXN/USD = tasas.USD
+    // Para convertir de USD a MXN: dividir por tasas[USD]
+    return parseFloat(cantidad) / tasas[origen]
+  }
+
+  // Convertir MXN → destino
+  function convertirDesdeMXN(cantidadMXN, destino) {
+    if (!tasas || cantidadMXN === null) return null
+    if (destino === 'MXN') return cantidadMXN
+    return cantidadMXN * tasas[destino]
+  }
+
+  const montoNum = parseFloat(monto) || 0
+  const enMXN = convertirAMXN(montoNum, monedaOrigen)
+
+  // Resultados en las otras monedas
+  const resultados = MONEDAS
+    .filter(m => m.code !== monedaOrigen)
+    .map(m => ({
+      ...m,
+      resultado: enMXN !== null ? convertirDesdeMXN(enMXN, m.code) : null,
+    }))
+
+  // Tasa de cambio entre dos monedas específicas para mostrar referencia
+  function tasaEntre(de, a) {
+    if (!tasas) return null
+    const enMXN = 1 / tasas[de]
+    return enMXN * tasas[a]
+  }
+
+  function fmt(num, code) {
+    if (num === null || isNaN(num)) return '—'
+    if (code === 'COP') return num.toLocaleString('es-CO', { maximumFractionDigits: 0 })
+    return num.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+
+  const COLORES = { USD:'#00d4ff', COP:'#ffd60a', MXN:'#00ff88' }
+
+  return (
+    <Modal onClose={onCerrar} maxWidth={380}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:17}}>💱 Calculadora de divisas</div>
+          {ultimaAct && <div style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',marginTop:2}}>Actualizado: {ultimaAct.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</div>}
+        </div>
+        <div style={{display:'flex',gap:5}}>
+          <button onClick={cargarTasas} style={{background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'3px 7px',cursor:'pointer',fontSize:11,color:'var(--text3)'}}>⟳</button>
+          <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{textAlign:'center',padding:'30px 0',color:'var(--text3)',fontFamily:'var(--mono)',fontSize:12}}>⏳ Obteniendo tipo de cambio...</div>
+      ) : error ? (
+        <div style={{background:'#1a0008',border:'1px solid #ff336630',borderRadius:8,padding:'12px',textAlign:'center'}}>
+          <div style={{color:'var(--red)',fontSize:12,marginBottom:8}}>{error}</div>
+          <button onClick={cargarTasas} className="btn btn-primary" style={{fontSize:11,padding:'5px 12px'}}>Reintentar</button>
+        </div>
+      ) : (
+        <>
+          {/* Selector de moneda origen */}
+          <div style={{display:'flex',gap:6,marginBottom:12}}>
+            {MONEDAS.map(m => (
+              <button key={m.code} onClick={()=>{setMonedaOrigen(m.code);setMonto('')}} style={{
+                flex:1,padding:'8px 4px',borderRadius:8,cursor:'pointer',textAlign:'center',
+                background:monedaOrigen===m.code?`${COLORES[m.code]}20`:'var(--bg2)',
+                border:`1px solid ${monedaOrigen===m.code?COLORES[m.code]+'60':'var(--border)'}`,
+                transition:'all .15s',
+              }}>
+                <div style={{fontSize:16}}>{m.emoji}</div>
+                <div style={{fontSize:9,fontWeight:700,color:monedaOrigen===m.code?COLORES[m.code]:'var(--text3)',fontFamily:'var(--mono)',marginTop:2}}>{m.code}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Input de monto */}
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:9}}>{MONEDAS.find(m=>m.code===monedaOrigen)?.emoji} MONTO EN {monedaOrigen}</label>
+            <input
+              value={monto}
+              onChange={e=>setMonto(e.target.value.replace(/[^0-9.]/g,''))}
+              placeholder={monedaOrigen==='COP'?'Ej: 500000':'Ej: 100'}
+              type="number"
+              style={{fontSize:20,fontWeight:800,fontFamily:'var(--mono)',padding:'10px 12px',color:COLORES[monedaOrigen]}}
+              autoFocus
+            />
+          </div>
+
+          {/* Resultados */}
+          <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:14}}>
+            {resultados.map(r => (
+              <div key={r.code} style={{
+                background:`${COLORES[r.code]}10`,
+                border:`1px solid ${COLORES[r.code]}30`,
+                borderRadius:10,padding:'12px 14px',
+                display:'flex',alignItems:'center',justifyContent:'space-between',
+              }}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{fontSize:22}}>{r.emoji}</span>
+                  <div>
+                    <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>{r.nombre}</div>
+                    <div style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',marginTop:1}}>
+                      1 {monedaOrigen} = {fmt(tasaEntre(monedaOrigen, r.code), r.code)} {r.code}
+                    </div>
+                  </div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:20,fontWeight:900,color:COLORES[r.code],fontFamily:'var(--mono)'}}>
+                    {monto ? fmt(r.resultado, r.code) : '—'}
+                  </div>
+                  <div style={{fontSize:10,fontWeight:700,color:COLORES[r.code],opacity:0.7}}>{r.code}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Tabla de referencia rápida */}
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 12px'}}>
+            <div style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>📊 REFERENCIA RÁPIDA</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4}}>
+              {[
+                {label:'1 USD → MXN', val: fmt(tasaEntre('USD','MXN'), 'MXN'), col:'var(--cyan)'},
+                {label:'1 MXN → USD', val: fmt(tasaEntre('MXN','USD'), 'USD'), col:'var(--cyan)'},
+                {label:'1000 COP → MXN', val: fmt(tasaEntre('COP','MXN')*1000, 'MXN'), col:'var(--yellow)'},
+                {label:'1 MXN → COP', val: fmt(tasaEntre('MXN','COP'), 'COP'), col:'var(--yellow)'},
+              ].map((ref,i) => (
+                <div key={i} style={{background:'var(--bg3)',borderRadius:6,padding:'5px 8px'}}>
+                  <div style={{fontSize:8,color:'var(--text3)',fontFamily:'var(--mono)'}}>{ref.label}</div>
+                  <div style={{fontSize:11,fontWeight:800,color:ref.col,fontFamily:'var(--mono)',marginTop:1}}>{ref.val}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </Modal>
+  )
+}
+
 // ─── MODAL COBRO RÁPIDO ───────────────────────────────────
 function ModalCobroRapido({ servicio, cliente, onGuardar, onCerrar }) {
   const [fecha, setFecha] = useState('')
@@ -1726,6 +1902,7 @@ function App({ sesion, onLogout }) {
   const [guardandoNota, setGuardandoNota] = useState(null)
   const [alertaDismissed, setAlertaDismissed] = useState(false)
   const [cobroRapido, setCobroRapido] = useState(null) // {servicio, cliente}
+  const [modalCalculadora, setModalCalculadora] = useState(false)
   const [modalRenovar, setModalRenovar] = useState(null)
   const [modalCobrarRenovar, setModalCobrarRenovar] = useState(null)
   const [modalEditar, setModalEditar] = useState(null)
@@ -1980,6 +2157,7 @@ function App({ sesion, onLogout }) {
       {modalBitacora && <ModalBitacora onCerrar={()=>setModalBitacora(false)} />}
       {modalRecordatorios && <ModalRecordatorios data={data} onCerrar={()=>setModalRecordatorios(false)} />}
       {cobroRapido && <ModalCobroRapido servicio={cobroRapido.servicio} cliente={cobroRapido.cliente} onGuardar={()=>{cargarDatos();mostrarToast('✅ Cobrado y renovado')}} onCerrar={()=>setCobroRapido(null)} />}
+      {modalCalculadora && <ModalCalculadora onCerrar={()=>setModalCalculadora(false)} />}
       {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={()=>{cargarDatos();mostrarToast('Servicio renovado')}} onCerrar={()=>setModalRenovar(null)} />}
       {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cobrado y renovado ✅')}} onCerrar={()=>setModalCobrarRenovar(null)} />}
       {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cambios guardados')}} onCerrar={()=>setModalEditar(null)} />}
@@ -2019,6 +2197,7 @@ function App({ sesion, onLogout }) {
               {esAdmin && <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={()=>setModalGestorServicios(true)} title="Gestionar servicios">⚙️</button>}
               {esAdmin && <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={()=>setModalBitacora(true)} title="Bitácora">📋</button>}
               {esAdmin && <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11,color: urgentes3>0?'var(--orange)':'var(--text3)'}} onClick={()=>setModalRecordatorios(true)} title="Recordatorios masivos">📲{urgentes3>0?` ${urgentes3}`:''}</button>}
+              <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={()=>setModalCalculadora(true)} title="Calculadora de divisas">💱</button>
               <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={cargarDatos} disabled={loading}>{loading?'⏳':'⟳'}</button>
               <button className="btn btn-ghost" style={{padding:'5px 8px',fontSize:11}} onClick={onLogout}>⏏</button>
             </div>
