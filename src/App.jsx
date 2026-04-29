@@ -607,7 +607,26 @@ function ModalRecordatorios({ data, onCerrar }) {
     const total = svcsPendientes.reduce((sum,s) => sum + parseFloat(s.precio||0), 0)
     const d = cliente.dMin
     const diasTxt = d===null?'próximamente':d<0?`venció hace ${Math.abs(d)} días`:d===0?'¡HOY!':d===1?'mañana':`en ${d} días`
-    return `Hola! 👋 Te recordamos con cariño que tu pago vence *${diasTxt}* 🗓️\n\n${lineas}\n\n*Total: $${total.toLocaleString()} MXN*\n\nPuedes realizar tu pago por transferencia 👇\n\n🔵 *Transferencia SPEI*\n🏦 Banco: STP\n👤 Beneficiario: Angelica Loredo\n🔢 CLABE: 646180401624191919\n📝 Concepto: Soporte\n\nCualquier duda escríbenos 😊\n📲 Soporte StreamBit: *664 410 1852*`
+    return [
+      `Hola! 👋 Esperamos que estés muy bien.`,
+      ``,
+      `Te recordamos que tu pago vence *${diasTxt}* 🗓️`,
+      ``,
+      lineas,
+      ``,
+      `💰 *Total: $${total.toLocaleString()} MXN*`,
+      ``,
+      `Puedes realizar tu pago fácilmente por transferencia 👇`,
+      ``,
+      `🔵 *Transferencia SPEI*`,
+      `🏦 Banco: STP`,
+      `👤 Beneficiario: Angelica Loredo`,
+      `🔢 CLABE: 646180401624191919`,
+      `📝 Concepto: Soporte`,
+      ``,
+      `¡Gracias por tu confianza! 🙌`,
+      `📲 Soporte StreamBit: *664 410 1852*`,
+    ].join('\n')
   }
 
   function enviarUno(cliente) {
@@ -2027,8 +2046,28 @@ function App({ sesion, onLogout }) {
     }).join('\n')
     const total = grupo.servicios.reduce((sum,s) => sum + parseFloat(s.precio||0), 0)
     const d = grupo.d
-    const diasTxt = d===0?'¡HOY!':d!==null?`en ${d} días`:'próximamente'
-    const txt = `Hola! 👋 Te recordamos con cariño el pago de *${cliente.nombre}* (${diasTxt}):\n${lineas}\n\n*Total: $${total.toLocaleString()} MXN*\nFecha: *${formatFecha(grupo.fecha)}*\n\nPuedes realizar tu pago por transferencia 👇\n\n🔵 *Transferencia SPEI*\n🏦 Banco: STP\n👤 Beneficiario: Angelica Loredo\n🔢 CLABE: 646180401624191919\n📝 Concepto: Soporte\n\nCualquier duda escríbenos 😊\n📲 Soporte StreamBit: *664 410 1852*`
+    const diasTxt = d===0?'¡HOY!':d!==null&&d<0?`venció hace ${Math.abs(d)} días`:d===1?'mañana':d!==null?`en ${d} días`:'próximamente'
+    const txt = [
+      `Hola! 👋 Esperamos que estés muy bien.`,
+      ``,
+      `Te recordamos que tu pago vence *${diasTxt}* 🗓️`,
+      `📅 Fecha: *${formatFecha(grupo.fecha)}*`,
+      ``,
+      lineas,
+      ``,
+      `💰 *Total: $${total.toLocaleString()} MXN*`,
+      ``,
+      `Puedes realizar tu pago fácilmente por transferencia 👇`,
+      ``,
+      `🔵 *Transferencia SPEI*`,
+      `🏦 Banco: STP`,
+      `👤 Beneficiario: Angelica Loredo`,
+      `🔢 CLABE: 646180401624191919`,
+      `📝 Concepto: Soporte`,
+      ``,
+      `¡Gracias por tu confianza! 🙌`,
+      `📲 Soporte StreamBit: *664 410 1852*`,
+    ].join('\n')
     window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank')
     setNotif(p => ({...p, [key]: true}))
     setTimeout(() => setNotif(p => {const n={...p};delete n[key];return n}), 3000)
