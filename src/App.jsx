@@ -1502,6 +1502,43 @@ function ModalEditarCliente({ cliente, serviciosCliente, onGuardar, onCerrar }) 
 }
 
 // ─── MODAL HISTORIAL CLIENTE ──────────────────────────────
+// ─── MODAL COBRO RÁPIDO ───────────────────────────────────
+function ModalCobroRapido({ servicio, cliente, onGuardar, onCerrar }) {
+  const [fecha, setFecha] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function guardar() {
+    if (!fecha) return
+    setSaving(true)
+    await supabase.from('servicios').update({
+      cobrado: fechaHoy(),
+      fecha_vencimiento: fecha,
+      estado: 'PENDIENTE',
+    }).eq('id', servicio.id)
+    if (servicio.perfil_id) {
+      await supabase.from('perfiles_espacios').update({ fecha_vencimiento: fecha }).eq('id', servicio.perfil_id)
+    }
+    await registrarBitacora('admin', 'COBRO_RAPIDO', 'servicios', servicio.id, { cuenta: servicio.cuenta, nueva_fecha: fecha }, cliente)
+    onGuardar(); onCerrar()
+  }
+
+  return (
+    <Modal onClose={onCerrar} maxWidth={340}>
+      <div style={{marginBottom:12}}>
+        <div style={{fontWeight:800,fontSize:16,marginBottom:2}}>⚡ Cobro rápido</div>
+        <div style={{fontSize:11,color:'var(--text3)',fontFamily:'var(--mono)'}}>{cliente} · {servicio.cuenta}</div>
+      </div>
+      <SelectorFecha value={fecha} onChange={setFecha} label="NUEVA FECHA DE VENCIMIENTO" />
+      <div style={{display:'flex',gap:8,marginTop:12}}>
+        <button onClick={onCerrar} className="btn btn-ghost" style={{flex:1,justifyContent:'center'}}>Cancelar</button>
+        <button onClick={guardar} disabled={!fecha||saving} className="btn btn-primary" style={{flex:1,justifyContent:'center',padding:10}}>
+          {saving?'...':'✅ Cobrar'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 function ModalHistorial({ cliente, onCerrar }) {
   const [servicios, setServicios] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1520,31 +1557,45 @@ function ModalHistorial({ cliente, onCerrar }) {
   }, [cliente.id])
 
   const totalGastado = servicios.reduce((s,sv) => s + parseFloat(sv.precio||0), 0)
+  const totalCobrado = servicios.filter(s=>s.cobrado).reduce((s,sv) => s + parseFloat(sv.precio||0), 0)
   const cobrados = servicios.filter(s => s.cobrado)
   const activos = servicios.filter(s => !s.cancelado)
+  const cancelados = servicios.filter(s => s.cancelado)
+
+  // Fecha desde que es cliente
+  const primerServicio = servicios.length > 0 ? servicios[servicios.length-1] : null
+  const desdeFecha = primerServicio?.created_at ? new Date(primerServicio.created_at) : null
+  const diasCliente = desdeFecha ? Math.floor((new Date() - desdeFecha) / 86400000) : null
 
   return (
     <Modal onClose={onCerrar}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <div>
-          <div style={{fontWeight:800,fontSize:18}}>📋 Historial</div>
+          <div style={{fontWeight:800,fontSize:17}}>📋 Historial del cliente</div>
           <div style={{fontSize:12,color:'var(--text2)',fontFamily:'var(--mono)',marginTop:2}}>{cliente.nombre}</div>
+          {diasCliente !== null && <div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>Cliente desde hace {diasCliente} días</div>}
         </div>
         <button className="btn btn-ghost" style={{padding:'6px 10px'}} onClick={onCerrar}>✕</button>
       </div>
 
-      {/* Stats rápidas */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:16}}>
-        {[
-          {label:'SERVICIOS',val:activos.length,color:'var(--cyan)'},
-          {label:'COBRADOS',val:cobrados.length,color:'var(--green)'},
-          {label:'TOTAL',val:`$${totalGastado.toLocaleString()}`,color:'var(--yellow)'},
-        ].map(stat => (
-          <div key={stat.label} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
-            <div style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:3}}>{stat.label}</div>
-            <div style={{fontSize:15,fontWeight:800,color:stat.color,fontFamily:'var(--mono)'}}>{stat.val}</div>
-          </div>
-        ))}
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:5,marginBottom:12}}>
+        <div style={{background:'#001a0e',border:'1px solid #00ff8820',borderRadius:8,padding:'8px 10px'}}>
+          <div style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:2}}>💰 TOTAL COBRADO</div>
+          <div style={{fontSize:17,fontWeight:800,color:'var(--green)',fontFamily:'var(--mono)'}}>${totalCobrado.toLocaleString()}</div>
+        </div>
+        <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px'}}>
+          <div style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:2}}>📦 TOTAL SERVICIOS</div>
+          <div style={{fontSize:17,fontWeight:800,color:'var(--cyan)',fontFamily:'var(--mono)'}}>{servicios.length}</div>
+        </div>
+        <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px'}}>
+          <div style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:2}}>✅ ACTIVOS</div>
+          <div style={{fontSize:17,fontWeight:800,color:'var(--text)',fontFamily:'var(--mono)'}}>{activos.length}</div>
+        </div>
+        <div style={{background: cancelados.length>0?'#1a0008':'var(--bg2)',border:`1px solid ${cancelados.length>0?'#ff336620':'var(--border)'}`,borderRadius:8,padding:'8px 10px'}}>
+          <div style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',marginBottom:2}}>❌ CANCELADOS</div>
+          <div style={{fontSize:17,fontWeight:800,color:cancelados.length>0?'var(--red)':'var(--text3)',fontFamily:'var(--mono)'}}>{cancelados.length}</div>
+        </div>
       </div>
 
       {loading ? (
@@ -1552,7 +1603,7 @@ function ModalHistorial({ cliente, onCerrar }) {
       ) : servicios.length === 0 ? (
         <div style={{textAlign:'center',padding:'30px 0',color:'var(--text3)',fontFamily:'var(--mono)',fontSize:12}}>Sin historial</div>
       ) : (
-        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        <div style={{display:'flex',flexDirection:'column',gap:5,maxHeight:320,overflowY:'auto'}}>
           {servicios.map(s => {
             const cancelado = (s.notas||'').startsWith('CANCELADO') || s.cancelado
             const d = diasRestantes(s.fecha_vencimiento)
@@ -1671,6 +1722,10 @@ function App({ sesion, onLogout }) {
   const [modalBitacora, setModalBitacora] = useState(false)
   const [modalRecordatorios, setModalRecordatorios] = useState(false)
   const [verDashboard, setVerDashboard] = useState(false)
+  const [notaRapida, setNotaRapida] = useState({}) // {clienteId: texto}
+  const [guardandoNota, setGuardandoNota] = useState(null)
+  const [alertaDismissed, setAlertaDismissed] = useState(false)
+  const [cobroRapido, setCobroRapido] = useState(null) // {servicio, cliente}
   const [modalRenovar, setModalRenovar] = useState(null)
   const [modalCobrarRenovar, setModalCobrarRenovar] = useState(null)
   const [modalEditar, setModalEditar] = useState(null)
@@ -1794,6 +1849,14 @@ function App({ sesion, onLogout }) {
     setTimeout(() => setNotif(p => {const n={...p};delete n[key];return n}), 3000)
   }
 
+  async function guardarNotaRapida(clienteId, nota) {
+    setGuardandoNota(clienteId)
+    await supabase.from('clientes').update({ nota_rapida: nota || null }).eq('id', clienteId)
+    cargarDatos()
+    setGuardandoNota(null)
+    mostrarToast('Nota guardada')
+  }
+
   async function marcarCobrado(s) {
     const { error: e } = await supabase.from('servicios').update({ cobrado: fechaHoy() }).eq('id', s.id)
     if (!e) {
@@ -1876,6 +1939,15 @@ function App({ sesion, onLogout }) {
     .filter(c => c.dMin !== null && c.dMin >= 0 && c.dMin <= 7)
     .reduce((sum, c) => sum + c.servicios.filter(s=>!s.cobrado).reduce((a,s)=>a+parseFloat(s.precio||0),0), 0)
 
+  // Ingreso proyectado próximo mes (servicios activos no cancelados)
+  const ingresoProyectado = data.reduce((sum, c) => sum + c.servicios.reduce((a,s) => a + parseFloat(s.precio||0), 0), 0)
+
+  // Clientes sin teléfono registrado
+  const sinTelefono = data.filter(c => {
+    const tel = (c.cliente.telefono || c.cliente.nombre || '').replace(/\D/g,'')
+    return tel.length < 10
+  })
+
   const resumenVinc = useMemo(() => {
     const m = new Map()
     data.forEach(({ servicios }) => servicios.forEach(s => {
@@ -1907,6 +1979,7 @@ function App({ sesion, onLogout }) {
       {modalGestorServicios && <ModalGestorServicios onCerrar={()=>setModalGestorServicios(false)} />}
       {modalBitacora && <ModalBitacora onCerrar={()=>setModalBitacora(false)} />}
       {modalRecordatorios && <ModalRecordatorios data={data} onCerrar={()=>setModalRecordatorios(false)} />}
+      {cobroRapido && <ModalCobroRapido servicio={cobroRapido.servicio} cliente={cobroRapido.cliente} onGuardar={()=>{cargarDatos();mostrarToast('✅ Cobrado y renovado')}} onCerrar={()=>setCobroRapido(null)} />}
       {modalRenovar && <ModalRenovar servicio={modalRenovar.servicio} cliente={modalRenovar.cliente} onRenovar={()=>{cargarDatos();mostrarToast('Servicio renovado')}} onCerrar={()=>setModalRenovar(null)} />}
       {modalCobrarRenovar && <ModalCobrarRenovar servicio={modalCobrarRenovar.servicio} cliente={modalCobrarRenovar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cobrado y renovado ✅')}} onCerrar={()=>setModalCobrarRenovar(null)} />}
       {modalEditar && <ModalEditar servicio={modalEditar.servicio} cliente={modalEditar.cliente} onGuardar={()=>{cargarDatos();mostrarToast('Cambios guardados')}} onCerrar={()=>setModalEditar(null)} />}
@@ -1951,10 +2024,16 @@ function App({ sesion, onLogout }) {
             </div>
           </div>
 
-          {/* Alerta urgentes */}
-          {vista==='cobros' && urgentes3 > 0 && (
-            <div style={{fontSize:10,color:'var(--red)',fontWeight:700,marginBottom:6,fontFamily:'var(--mono)'}}>
-              🔴 {urgentes3} cliente{urgentes3>1?'s':''} · ≤3 días
+          {/* Alerta prominente de vencidos/hoy */}
+          {vista==='cobros' && !alertaDismissed && (vencidos.length > 0 || hoy.length > 0) && (
+            <div style={{background:'#1a0008',border:'1px solid #ff336650',borderRadius:10,padding:'10px 12px',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
+              <div style={{fontSize:18}}>🚨</div>
+              <div style={{flex:1}}>
+                {vencidos.length > 0 && <div style={{fontSize:12,fontWeight:800,color:'var(--red)'}}>{vencidos.length} cliente{vencidos.length>1?'s':''} vencido{vencidos.length>1?'s':''}</div>}
+                {hoy.length > 0 && <div style={{fontSize:12,fontWeight:800,color:'var(--orange)'}}>{hoy.length} cliente{hoy.length>1?'s':''} vence{hoy.length>1?'n':''} HOY</div>}
+                <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>Toca 📲 para enviar recordatorios</div>
+              </div>
+              <button onClick={()=>setAlertaDismissed(true)} style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,padding:'2px 4px'}}>✕</button>
             </div>
           )}
 
@@ -2045,7 +2124,7 @@ function App({ sesion, onLogout }) {
                       </div>
                     ))}
                   </div>
-                  <div>
+                  <div style={{marginBottom:8}}>
                     <div style={{fontSize:9,color:'var(--cyan)',fontWeight:700,marginBottom:5,fontFamily:'var(--mono)'}}>POR SERVICIO</div>
                     {resumenServicio.map(([k,v]) => (
                       <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
@@ -2057,6 +2136,29 @@ function App({ sesion, onLogout }) {
                       </div>
                     ))}
                   </div>
+
+                  {/* Ingreso proyectado + sin teléfono */}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginTop:4}}>
+                    <div style={{background:'#001a14',borderRadius:8,padding:'8px 12px',border:'1px solid #00d4ff20'}}>
+                      <div style={{fontSize:9,color:'var(--text3)',marginBottom:3,fontFamily:'var(--mono)'}}>📈 PROYECTADO</div>
+                      <div style={{fontSize:16,fontWeight:800,color:'var(--cyan)',fontFamily:'var(--mono)'}}>${ingresoProyectado.toLocaleString()}</div>
+                      <div style={{fontSize:9,color:'var(--text3)',marginTop:1}}>próximo ciclo</div>
+                    </div>
+                    <div style={{background: sinTelefono.length>0?'#1a0800':'var(--bg2)',borderRadius:8,padding:'8px 12px',border:`1px solid ${sinTelefono.length>0?'#ff8c0030':'var(--border)'}`}}>
+                      <div style={{fontSize:9,color:'var(--text3)',marginBottom:3,fontFamily:'var(--mono)'}}>📵 SIN TELÉFONO</div>
+                      <div style={{fontSize:16,fontWeight:800,color:sinTelefono.length>0?'var(--orange)':'var(--green)',fontFamily:'var(--mono)'}}>{sinTelefono.length}</div>
+                      <div style={{fontSize:9,color:'var(--text3)',marginTop:1}}>{sinTelefono.length>0?'no se puede avisar':'todos ok'}</div>
+                    </div>
+                  </div>
+                  {/* Lista de sin teléfono */}
+                  {sinTelefono.length > 0 && (
+                    <div style={{marginTop:6,background:'var(--bg3)',borderRadius:8,padding:'6px 10px'}}>
+                      <div style={{fontSize:9,color:'var(--orange)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:4}}>SIN TELÉFONO:</div>
+                      {sinTelefono.map(c => (
+                        <div key={c.cliente.id} style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>• {c.cliente.nombre}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2185,6 +2287,23 @@ function App({ sesion, onLogout }) {
                 )}
               </div>
 
+              {/* Nota rápida del cliente */}
+              {esAdmin && (
+                <div style={{display:'flex',gap:5,alignItems:'center',marginBottom:6}}>
+                  <input
+                    defaultValue={cliente.nota_rapida || ''}
+                    placeholder="📝 Nota rápida (ej: paga en efectivo, cliente VIP...)"
+                    style={{flex:1,fontSize:10,padding:'4px 8px',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,color:'var(--text2)',fontFamily:'var(--mono)'}}
+                    onBlur={e => {
+                      const val = e.target.value.trim()
+                      if (val !== (cliente.nota_rapida || '')) guardarNotaRapida(cliente.id, val)
+                    }}
+                    onKeyDown={e => { if(e.key==='Enter') e.target.blur() }}
+                  />
+                  {guardandoNota === cliente.id && <span style={{fontSize:9,color:'var(--green)'}}>✓</span>}
+                </div>
+              )}
+
               {/* Grupos por fecha */}
               {grupos.map((grupo, gi) => {
                 const key = `${cliente.id}__${grupo.fecha}`
@@ -2235,8 +2354,12 @@ function App({ sesion, onLogout }) {
                         {esAdmin && (
                           <div style={{display:'flex',gap:4,alignItems:'center'}}>
                             {!s.cobrado && (
-                              <button style={{padding:'2px 8px',borderRadius:6,border:'1px solid #00ff8830',background:'transparent',color:'var(--green)',cursor:'pointer',fontSize:10,fontWeight:700}}
-                                onClick={()=>setModalCobrarRenovar({servicio:s,cliente:cliente.nombre})}>✅ Cobrar</button>
+                              <>
+                                <button style={{padding:'2px 8px',borderRadius:6,border:'1px solid #00ff8830',background:'transparent',color:'var(--green)',cursor:'pointer',fontSize:10,fontWeight:700}}
+                                  onClick={()=>setModalCobrarRenovar({servicio:s,cliente:cliente.nombre})}>✅ Cobrar</button>
+                                <button style={{padding:'2px 6px',borderRadius:6,border:'1px solid #00ff8815',background:'transparent',color:'var(--green)',cursor:'pointer',fontSize:10,opacity:0.7}}
+                                  onClick={()=>setCobroRapido({servicio:s,cliente:cliente.nombre})} title="Cobro rápido — solo fecha">⚡</button>
+                              </>
                             )}
                             {s.cobrado && (
                               <button style={{padding:'2px 8px',borderRadius:6,border:'1px solid #ff336620',background:'transparent',color:'var(--text3)',cursor:'pointer',fontSize:10}}
@@ -2485,6 +2608,48 @@ function GuiasView() {
   const [mostrarMsg, setMostrarMsg] = useState(false)
   const [copiado, setCopiado] = useState(false)
   const [buscar, setBuscar] = useState('')
+  const [buscarCliente, setBuscarCliente] = useState('')
+  const [clientesEncontrados, setClientesEncontrados] = useState([])
+  const [buscandoCliente, setBuscandoCliente] = useState(false)
+
+  // Buscar cliente en BD para auto-rellenar datos
+  async function buscarClienteEnBD(q) {
+    if (!q || q.length < 2) { setClientesEncontrados([]); return }
+    setBuscandoCliente(true)
+    const { data } = await supabase
+      .from('clientes')
+      .select('id, nombre, telefono')
+      .ilike('nombre', `%${q}%`)
+      .limit(5)
+    setClientesEncontrados(data || [])
+    setBuscandoCliente(false)
+  }
+
+  async function seleccionarCliente(c) {
+    // Buscar el servicio más reciente del cliente para auto-rellenar
+    const { data: svcs } = await supabase
+      .from('servicios')
+      .select('*, perfiles_espacios!servicios_perfil_id_fkey(perfil, pin, cuentas_maestras(correo, password))')
+      .eq('cliente_id', c.id)
+      .eq('cancelado', false)
+      .order('fecha_vencimiento', { ascending: false })
+      .limit(1)
+    const svc = svcs?.[0]
+    const perfil = svc?.perfiles_espacios
+    const cm = perfil?.cuentas_maestras
+    const tel = (c.telefono || c.nombre || '').replace(/\D/g,'')
+    setVars(p => ({
+      ...p,
+      tel: tel.length >= 10 ? tel : '',
+      usuario: svc?.acceso_cliente || '',
+      correo: svc?.acceso_cliente || cm?.correo || '',
+      contraseña: cm?.password || '',
+      perfil: perfil?.perfil || '',
+      pin: perfil?.pin || '',
+    }))
+    setBuscarCliente(c.nombre)
+    setClientesEncontrados([])
+  }
 
   const guia = servicioSel ? GUIAS_DATA[servicioSel] : null
   const pasos = guia && dispositivoSel ? guia.dispositivos[dispositivoSel]?.pasos || [] : []
@@ -2547,6 +2712,25 @@ function GuiasView() {
             <button onClick={()=>{setServicioSel(null);setDispositivoSel(null)}} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'4px 10px',cursor:'pointer',fontSize:11,color:'var(--text3)'}}>← Volver</button>
             <span style={{fontSize:20}}>{guia.emoji}</span>
             <span style={{fontWeight:800,fontSize:15}}>{servicioSel}</span>
+          </div>
+
+          {/* Buscar cliente para auto-rellenar */}
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 12px',marginBottom:10}}>
+            <div style={{fontSize:10,color:'var(--cyan)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:6}}>🔍 BUSCAR CLIENTE (auto-rellena datos)</div>
+            <div style={{position:'relative'}}>
+              <input value={buscarCliente} onChange={e=>{setBuscarCliente(e.target.value);buscarClienteEnBD(e.target.value)}}
+                placeholder="Nombre o número del cliente..." style={{fontSize:11,padding:'5px 8px'}} />
+              {buscandoCliente && <div style={{fontSize:10,color:'var(--text3)',marginTop:3}}>⏳ Buscando...</div>}
+              {clientesEncontrados.length > 0 && (
+                <div style={{position:'absolute',top:'calc(100% + 3px)',left:0,right:0,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,zIndex:50}}>
+                  {clientesEncontrados.map(c => (
+                    <div key={c.id} onMouseDown={()=>seleccionarCliente(c)} style={{padding:'7px 10px',cursor:'pointer',fontSize:12,borderBottom:'1px solid var(--border)',color:'var(--text)'}}>
+                      {c.nombre}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Credenciales */}
