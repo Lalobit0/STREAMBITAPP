@@ -2421,7 +2421,7 @@ function App({ sesion, onLogout }) {
             })}
           </div>
 
-          {/* Filtros estado + orden — una línea */}
+          {/* Filtros estado — una línea */}
           <div style={{display:'flex',gap:4,overflowX:'auto',paddingBottom:2,alignItems:'center'}}>
             {FILTROS.map(f => {
               const active = filtro === f.val
@@ -2441,16 +2441,6 @@ function App({ sesion, onLogout }) {
                 </button>
               )
             })}
-            <div style={{width:1,background:'var(--border)',height:16,flexShrink:0,margin:'0 2px'}}/>
-            {[{val:'fecha',label:'📅',tip:'Fecha'},{val:'nombre',label:'🔤',tip:'Nombre'},{val:'precio',label:'💰',tip:'Precio'}].map(o => (
-              <button key={o.val} onClick={()=>setOrden(o.val)} title={o.tip} style={{
-                padding:'3px 6px',borderRadius:6,flexShrink:0,
-                border:`1px solid ${orden===o.val?'var(--cyan)':'transparent'}`,
-                background:orden===o.val?'rgba(0,212,255,0.12)':'transparent',
-                color:orden===o.val?'var(--cyan)':'var(--text3)',
-                cursor:'pointer',fontSize:11,transition:'all .15s',
-              }}>{o.label}</button>
-            ))}
           </div>
           </>}
         </div>
