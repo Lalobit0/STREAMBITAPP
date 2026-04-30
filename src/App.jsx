@@ -1948,6 +1948,16 @@ const FILTROS = [
   {val:'pendientes',label:'⏳ Pendientes'},
 ]
 
+// ─── CATEGORÍAS DE SERVICIOS (global) ─────────────────────
+const CATS_SERVICIOS = {
+  'Streaming':     { emoji:'🎬', servicios:['netflix','disney','hbo','max','prime','paramount','vix','crunchyroll','apple tv','apple one'] },
+  'Música':        { emoji:'🎵', servicios:['spotify'] },
+  'Video':         { emoji:'▶️', servicios:['youtube'] },
+  'Productividad': { emoji:'💼', servicios:['office','canva','capcut'] },
+  'IA':            { emoji:'🤖', servicios:['chatgpt','gemini','grok','copilot'] },
+  'IPTV':          { emoji:'📡', servicios:['ares','iptv'] },
+}
+
 function App({ sesion, onLogout }) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2037,15 +2047,6 @@ function App({ sesion, onLogout }) {
   }, [])
 
   useEffect(() => { cargarDatos() }, [cargarDatos])
-
-  const CATS_SERVICIOS = {
-    'Streaming':     { emoji:'🎬', servicios:['netflix','disney','hbo','max','prime','paramount','vix','crunchyroll','apple tv','apple one'] },
-    'Música':        { emoji:'🎵', servicios:['spotify'] },
-    'Video':         { emoji:'▶️', servicios:['youtube'] },
-    'Productividad': { emoji:'💼', servicios:['office','canva','capcut'] },
-    'IA':            { emoji:'🤖', servicios:['chatgpt','gemini','grok','copilot'] },
-    'IPTV':          { emoji:'📡', servicios:['ares','iptv'] },
-  }
 
   function getCatServicio(cuenta) {
     const c = cuenta.toLowerCase()
