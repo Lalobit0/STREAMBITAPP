@@ -860,12 +860,23 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
     try {
       let cId = clienteId
       if (!cId) {
-        const { data: existing } = await supabase.from('clientes').select('id').eq('nombre', form.nombre.trim()).single()
-        if (existing) { cId = existing.id }
-        else {
+        const { data: existing } = await supabase.from('clientes').select('id, telefono').eq('nombre', form.nombre.trim()).single()
+        if (existing) {
+          cId = existing.id
+          // Si el cliente existe pero sin teléfono, actualizarlo
+          if (!existing.telefono && form.tel) {
+            await supabase.from('clientes').update({ telefono: form.tel }).eq('id', cId)
+          }
+        } else {
           const { data: nuevo, error: e } = await supabase.from('clientes').insert({ nombre: form.nombre.trim(), telefono: form.tel || null }).select().single()
           if (e) throw e
           cId = nuevo.id
+        }
+      } else if (form.tel) {
+        // Si es cliente existente y se ingresó teléfono, actualizar si no tenía
+        const { data: cli } = await supabase.from('clientes').select('telefono').eq('id', cId).single()
+        if (cli && !cli.telefono) {
+          await supabase.from('clientes').update({ telefono: form.tel }).eq('id', cId)
         }
       }
 
@@ -1919,9 +1930,14 @@ function App({ sesion, onLogout }) {
   const [filtroVinc, setFiltroVinc] = useState('')
   const [orden, setOrden] = useState('fecha')
   const [verRes, setVerRes] = useState(false)
+  const [mesFiltro, setMesFiltro] = useState(() => {
+    const h = new Date(); return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}`
+  })
   const [ultimaAct, setUltimaAct] = useState(null)
   const [modalForm, setModalForm] = useState(null)
   const [modalGestorServicios, setModalGestorServicios] = useState(false)
+  const [pagina, setPagina] = useState(1)
+  const POR_PAGINA = 20
   const [modalBitacora, setModalBitacora] = useState(false)
   const [modalRecordatorios, setModalRecordatorios] = useState(false)
   const [verDashboard, setVerDashboard] = useState(false)
@@ -2068,7 +2084,11 @@ function App({ sesion, onLogout }) {
       `¡Gracias por tu confianza! 🙌`,
       `📲 Soporte StreamBit: *664 410 1852*`,
     ].join('\n')
-    window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank')
+    const tel = (cliente.telefono || cliente.nombre || '').replace(/\D/g,'')
+    const waUrl = tel.length >= 10
+      ? `https://wa.me/52${tel}?text=${encodeURIComponent(txt)}`
+      : `https://wa.me/?text=${encodeURIComponent(txt)}`
+    window.open(waUrl, '_blank')
     setNotif(p => ({...p, [key]: true}))
     setTimeout(() => setNotif(p => {const n={...p};delete n[key];return n}), 3000)
   }
@@ -2172,6 +2192,9 @@ function App({ sesion, onLogout }) {
     return tel.length < 10
   })
 
+  // Reset paginación al cambiar filtro/búsqueda
+  useEffect(() => { setPagina(1) }, [filtro, filtroVinc, buscar])
+
   const resumenVinc = useMemo(() => {
     const m = new Map()
     data.forEach(({ servicios }) => servicios.forEach(s => {
@@ -2194,6 +2217,15 @@ function App({ sesion, onLogout }) {
     }))
     return Array.from(m.entries()).sort((a,b) => b[1].total - a[1].total)
   }, [data])
+
+  // Clientes más rentables top 5
+  const clientesRentables = useMemo(() =>
+    [...data].sort((a,b) => b.total - a.total).slice(0,5)
+  , [data])
+
+  // Paginación
+  const totalPaginas = Math.ceil(filtrados.length / POR_PAGINA)
+  const filtradosPaginados = filtrados.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA)
 
   return (
     <div style={{minHeight:'100vh',background:'var(--bg)',fontFamily:'var(--font)',paddingBottom:40}}>
@@ -2274,7 +2306,12 @@ function App({ sesion, onLogout }) {
                     </div>
                   )}
                 </div>
-                <span style={{fontSize:10,fontFamily:'var(--mono)'}}>{verRes?'▲':'▼'}</span>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                  <input type="month" value={mesFiltro} onChange={e=>{e.stopPropagation();setMesFiltro(e.target.value)}}
+                    onClick={e=>e.stopPropagation()}
+                    style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:5,padding:'1px 5px',fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',cursor:'pointer'}} />
+                  <span style={{fontSize:10,fontFamily:'var(--mono)'}}>{verRes?'▲':'▼'}</span>
+                </div>
               </button>
               {verRes && (
                 <div style={{padding:'0 12px 12px'}}>
@@ -2383,6 +2420,23 @@ function App({ sesion, onLogout }) {
                       ))}
                     </div>
                   )}
+
+                  {/* Top 5 clientes más rentables */}
+                  {clientesRentables.length > 0 && (
+                    <div style={{marginTop:8}}>
+                      <div style={{fontSize:9,color:'var(--yellow)',fontWeight:700,marginBottom:5,fontFamily:'var(--mono)'}}>🏆 TOP CLIENTES</div>
+                      {clientesRentables.map((c,i) => (
+                        <div key={c.cliente.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+                          <div style={{display:'flex',gap:5,alignItems:'center'}}>
+                            <span style={{fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)',width:12}}>{i+1}</span>
+                            <span style={{fontSize:10,color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:140}}>{c.cliente.nombre}</span>
+                            <span style={{fontSize:9,color:'var(--text3)',background:'var(--bg3)',padding:'1px 4px',borderRadius:3}}>{c.servicios.length}</span>
+                          </div>
+                          <span style={{fontSize:11,color:'var(--yellow)',fontWeight:700,fontFamily:'var(--mono)'}}>${c.total.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2466,7 +2520,7 @@ function App({ sesion, onLogout }) {
           </div>
         ) : filtrados.length === 0 ? (
           <div style={{textAlign:'center',color:'var(--text3)',padding:'60px 0',fontFamily:'var(--mono)',fontSize:12}}>Sin resultados</div>
-        ) : filtrados.map(({ cliente, servicios, grupos, dMin, total }) => {
+        ) : filtradosPaginados.map(({ cliente, servicios, grupos, dMin, total }) => {
           const urgente = dMin !== null && dMin >= 0 && dMin <= 3
           const vencido = dMin !== null && dMin < 0
           const cardClass = urgente ? 'card card-urgent' : vencido ? 'card card-urgent' : 'card'
@@ -2611,8 +2665,25 @@ function App({ sesion, onLogout }) {
           )
         })}
         {!loading && !error && (
-          <div style={{textAlign:'center',fontSize:11,color:'var(--text3)',marginTop:16,fontFamily:'var(--mono)'}}>
-            {filtrados.length} / {data.length} clientes
+          <div style={{textAlign:'center',marginTop:16}}>
+            {/* Controles paginación */}
+            {totalPaginas > 1 && (
+              <div style={{display:'flex',gap:5,justifyContent:'center',alignItems:'center',marginBottom:8}}>
+                <button onClick={()=>setPagina(p=>Math.max(1,p-1))} disabled={pagina===1} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:11,color:'var(--text3)',opacity:pagina===1?0.4:1}}>←</button>
+                {Array.from({length:totalPaginas},(_,i)=>i+1).map(p=>(
+                  <button key={p} onClick={()=>setPagina(p)} style={{
+                    background:pagina===p?'var(--cyan)':'var(--bg2)',
+                    border:`1px solid ${pagina===p?'var(--cyan)':'var(--border)'}`,
+                    borderRadius:6,padding:'3px 8px',cursor:'pointer',fontSize:11,
+                    color:pagina===p?'var(--bg)':'var(--text3)',fontWeight:pagina===p?700:400,
+                  }}>{p}</button>
+                ))}
+                <button onClick={()=>setPagina(p=>Math.min(totalPaginas,p+1))} disabled={pagina===totalPaginas} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:11,color:'var(--text3)',opacity:pagina===totalPaginas?0.4:1}}>→</button>
+              </div>
+            )}
+            <div style={{fontSize:11,color:'var(--text3)',fontFamily:'var(--mono)'}}>
+              {filtrados.length} clientes{totalPaginas > 1 ? ` · pág ${pagina}/${totalPaginas}` : ''}
+            </div>
           </div>
         )}
       </div>
@@ -3186,7 +3257,6 @@ function CuentasView() {
         msg: `¿Eliminar perfil ${p.perfil}?`,
         detalle: `Está asignado a ${p.cliente_nombre}. El servicio del cliente también se liberará.`,
         onOk: async () => {
-          // Liberar servicio del cliente si existe
           if (p.servicio_id) {
             await supabase.from('servicios').update({ perfil_id: null }).eq('id', p.servicio_id)
           }
@@ -3198,6 +3268,19 @@ function CuentasView() {
       await supabase.from('perfiles_espacios').delete().eq('id', p.id)
       cargar()
     }
+  }
+
+  async function sincronizarTodo(perfiles) {
+    const pendientes = perfiles.filter(p => !p.servicio_id && p.servicio_id_calc)
+    if (pendientes.length === 0) return
+    for (const p of pendientes) {
+      await supabase.from('perfiles_espacios').update({
+        servicio_id: p.servicio_id_calc,
+        fecha_vencimiento: p.fecha_vencimiento_calc,
+      }).eq('id', p.id)
+      await supabase.from('servicios').update({ perfil_id: p.id }).eq('id', p.servicio_id_calc)
+    }
+    cargar()
   }
 
   async function agregarCuenta() {
@@ -3290,13 +3373,27 @@ function CuentasView() {
         </div>
       )}
 
-      {/* Buscador + botón nueva cuenta */}
-      <div style={{display:'flex',gap:8,marginBottom:8}}>
-        <div style={{position:'relative',flex:1}}>
+      {/* Buscador + botones */}
+      <div style={{display:'flex',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+        <div style={{position:'relative',flex:1,minWidth:160}}>
           <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:13}}>🔍</span>
           <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar servicio, vinculada o cliente..."
             style={{...inputSt,paddingLeft:36}}/>
         </div>
+        {(() => {
+          const todosPerfiles = cuentas.flatMap(c => (c.perfiles_espacios||[]).map(p => ({
+            ...p,
+            fecha_vencimiento_calc: p.fecha_vencimiento,
+            servicio_id_calc: p.servicio_id,
+          })))
+          const pendientesSync = todosPerfiles.filter(p => !p.servicio_id && p.cliente_nombre && p.cliente_nombre.toUpperCase() !== 'DISPONIBLE')
+          return pendientesSync.length > 0 ? (
+            <button onClick={()=>sincronizarTodo(todosPerfiles)} style={{
+              background:'rgba(0,212,255,0.1)',border:'1px solid #00d4ff30',
+              color:'var(--cyan)',borderRadius:8,padding:'6px 10px',cursor:'pointer',fontSize:10,fontWeight:700,flexShrink:0,
+            }}>🔗 Sincronizar todo ({pendientesSync.length})</button>
+          ) : null
+        })()}
         <button onClick={()=>setAgregandoCuenta(!agregandoCuenta)} style={{
           background:agregandoCuenta?'rgba(0,212,255,0.15)':'var(--bg2)',
           border:`1px solid ${agregandoCuenta?'var(--cyan)':'var(--border)'}`,
