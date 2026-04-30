@@ -3517,7 +3517,7 @@ function CuentasView() {
 
       {/* Filtros por categoría */}
       <div style={{display:'flex',gap:4,overflowX:'auto',marginBottom:6,paddingBottom:2}}>
-        <button onClick={()=>setFiltroCategoriaCuentas('')} style={{
+        <button onClick={()=>{setFiltroCategoriaCuentas('');setFiltroSvc('')}} style={{
           padding:'3px 9px',borderRadius:20,border:'none',cursor:'pointer',fontSize:10,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,
           background: filtroCategoriaCuentas==='' ? 'var(--yellow)' : 'var(--bg2)',
           color: filtroCategoriaCuentas==='' ? 'var(--bg)' : 'var(--text3)',
@@ -3525,7 +3525,7 @@ function CuentasView() {
         {Object.entries(CATS_SERVICIOS).filter(([cat]) => categoriasDisponibles.includes(cat)).map(([cat,{emoji}]) => {
           const active = filtroCategoriaCuentas === cat
           return (
-            <button key={cat} onClick={()=>setFiltroCategoriaCuentas(active?'':cat)} style={{
+            <button key={cat} onClick={()=>{setFiltroCategoriaCuentas(active?'':cat);setFiltroSvc('')}} style={{
               padding:'3px 9px',borderRadius:20,cursor:'pointer',flexShrink:0,fontSize:10,fontWeight:700,whiteSpace:'nowrap',
               border:`1px solid ${active?'#ffd60a60':'var(--border)'}`,
               background: active ? 'rgba(255,214,10,0.15)' : 'var(--bg2)',
@@ -3534,7 +3534,7 @@ function CuentasView() {
           )
         })}
         {categoriasDisponibles.includes('Otro') && (
-          <button onClick={()=>setFiltroCategoriaCuentas(filtroCategoriaCuentas==='Otro'?'':'Otro')} style={{
+          <button onClick={()=>{setFiltroCategoriaCuentas(filtroCategoriaCuentas==='Otro'?'':'Otro');setFiltroSvc('')}} style={{
             padding:'3px 9px',borderRadius:20,cursor:'pointer',flexShrink:0,fontSize:10,fontWeight:700,whiteSpace:'nowrap',
             border:`1px solid ${filtroCategoriaCuentas==='Otro'?'#ffd60a60':'var(--border)'}`,
             background: filtroCategoriaCuentas==='Otro' ? 'rgba(255,214,10,0.15)' : 'var(--bg2)',
@@ -3545,9 +3545,9 @@ function CuentasView() {
 
       {/* Filtros por servicio */}
       <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:12,paddingBottom:2}}>
-        <button onClick={()=>setFiltroSvc('')} style={{...chipSt(filtroSvc==='')}}> Todos</button>
+        <button onClick={()=>{setFiltroSvc('');setFiltroCategoriaCuentas('')}} style={{...chipSt(filtroSvc===''&&filtroCategoriaCuentas==='')}}> Todos</button>
         {serviciosUnicos.map(s=>(
-          <button key={s} onClick={()=>setFiltroSvc(filtroSvc===s?'':s)} style={{...chipSt(filtroSvc===s)}}>{s}</button>
+          <button key={s} onClick={()=>{setFiltroSvc(filtroSvc===s?'':s);setFiltroCategoriaCuentas('')}} style={{...chipSt(filtroSvc===s)}}>{s}</button>
         ))}
       </div>
 
