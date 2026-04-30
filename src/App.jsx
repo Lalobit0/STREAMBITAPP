@@ -392,8 +392,8 @@ function BuscadorServicio({ value, onChange }) {
 // ─── SERVICIOS QUE USAN PERFILES vs INDIVIDUALES ──────────
 const SERVICIOS_CON_PERFILES = ['Netflix','Netflix extra','Netflix genérico','Disney 4K','Disney HD','HBO HD','HBO 4K','HBO PLATINO','MAX','Spotify','Spotify 3','Youtubep1','Youtubep3','YouTube','Office','Office3','Office12']
 
-// Servicios individuales: cada cuenta tiene su propio correo+contraseña, sin perfiles compartidos
-const SERVICIOS_INDIVIDUALES = ['ChatGPT','chatgpt','CHATGPT']
+// Servicios genéricos: 1 cuenta = 1 cliente, agrupados por tipo en tab Cuentas
+const SERVICIOS_INDIVIDUALES = ['ChatGPT','Gemini','Grok','Canva','Capcut','CapCut','Copilot']
 function esServicioIndividual(cuenta) {
   if (!cuenta) return false
   return SERVICIOS_INDIVIDUALES.some(s => cuenta.toLowerCase().includes(s.toLowerCase()))
@@ -911,35 +911,61 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
       await registrarBitacora('admin', 'NUEVO_SERVICIO', 'servicios', svcData.id, { cuenta: form.cuenta, precio: parseFloat(form.precio)||0, fecha: form.fecha }, form.nombre.trim() || clienteNombre)
       const tel = form.tel || form.nombre.replace(/\D/g,'')
 
-      // Para servicios individuales, guardar también los datos de la cuenta
+      // Para servicios genéricos (Canva, ChatGPT, etc.) — agregar como perfil a la cuenta grupal existente
       let cuentaIndividualData = null
       if (esIndividual) {
-        // Crear cuenta maestra individual para este cliente
-        const { data: cmData } = await supabase.from('cuentas_maestras').insert({
-          servicio: form.cuenta.trim(),
-          vinculada: null,
-          correo: form.correoIndividual.trim(),
-          password: form.passIndividual.trim() || null,
-          tipo: 'individual',
-          notas: form.nombre.trim() || clienteNombre,
-        }).select().single()
+        // Buscar cuenta maestra existente del mismo servicio (vinculada = Generico)
+        const keyword = form.cuenta.trim().split(' ')[0]
+        const { data: cuentasExistentes } = await supabase
+          .from('cuentas_maestras')
+          .select('id, servicio, vinculada, categoria')
+          .ilike('servicio', `%${keyword}%`)
+          .limit(5)
 
-        if (cmData) {
-          cuentaIndividualData = cmData
-          // Crear perfil_espacio vinculado a esta cuenta y al servicio
+        // Usar la primera cuenta que coincida, o crear una nueva agrupada si no existe
+        let cuentaMaestraId = cuentasExistentes?.[0]?.id
+
+        if (!cuentaMaestraId) {
+          // Crear cuenta maestra agrupada si no existe
+          const { data: cmNueva } = await supabase.from('cuentas_maestras').insert({
+            servicio: form.cuenta.trim(),
+            vinculada: 'Generico',
+            tipo: 'perfiles',
+            categoria: 'IA',
+          }).select().single()
+          cuentaMaestraId = cmNueva?.id
+          cuentaIndividualData = cmNueva
+        } else {
+          cuentaIndividualData = cuentasExistentes[0]
+        }
+
+        if (cuentaMaestraId) {
+          // Contar perfiles existentes para asignar número siguiente
+          const { data: perfilesExistentes } = await supabase
+            .from('perfiles_espacios')
+            .select('id')
+            .eq('cuenta_id', cuentaMaestraId)
+          const numPerfil = (perfilesExistentes?.length || 0) + 1
+
+          // Crear perfil con los datos del cliente
           const { data: pData } = await supabase.from('perfiles_espacios').insert({
-            cuenta_id: cmData.id,
-            perfil: '1',
+            cuenta_id: cuentaMaestraId,
+            perfil: String(numPerfil),
             cliente_id: cId,
             cliente_nombre: form.nombre.trim() || clienteNombre,
             servicio_id: svcData.id,
             fecha_vencimiento: form.fecha,
-            correo_cliente: form.accesoCliente || null,
+            correo_cliente: form.correoIndividual.trim() || form.accesoCliente || null,
+            password_cliente: form.passIndividual.trim() || null,
+            telefono_cliente: form.tel || null,
             notas: null,
           }).select().single()
+
           if (pData) {
-            // Enlazar el perfil al servicio
-            await supabase.from('servicios').update({ perfil_id: pData.id, vinculada: null }).eq('id', svcData.id)
+            await supabase.from('servicios').update({
+              perfil_id: pData.id,
+              vinculada: cuentasExistentes?.[0]?.vinculada || 'Generico',
+            }).eq('id', svcData.id)
           }
         }
       }
@@ -1079,15 +1105,16 @@ function ModalServicio({ onGuardar, onCerrar, clienteNombre, clienteId }) {
         </div>
       )}
 
-      {/* Campos especiales para servicios individuales (ChatGPT) */}
+      {/* Campos para servicios genéricos (Canva, ChatGPT, Grok, etc.) */}
       {form.cuenta && esIndividual && (
         <div style={{marginBottom:12,background:'rgba(157,78,221,0.08)',border:'1px solid rgba(157,78,221,0.25)',borderRadius:10,padding:'12px'}}>
-          <div style={{fontSize:10,color:'var(--purple)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:8}}>🤖 CUENTA INDIVIDUAL</div>
+          <div style={{fontSize:10,color:'var(--purple)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:4}}>🔑 DATOS DE ACCESO</div>
+          <div style={{fontSize:9,color:'var(--text3)',marginBottom:8}}>Se agrupará bajo "{form.cuenta.split(' ')[0]}" en el tab Cuentas</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
             <div>
               <label style={{fontSize:9}}>CORREO DE LA CUENTA *</label>
               <input value={form.correoIndividual} onChange={e=>set('correoIndividual',e.target.value)}
-                placeholder="correo@openai.com" style={{fontFamily:'var(--mono)',fontSize:12}} />
+                placeholder="correo@ejemplo.com" style={{fontFamily:'var(--mono)',fontSize:12}} />
             </div>
             <div>
               <label style={{fontSize:9}}>CONTRASEÑA</label>
@@ -1928,6 +1955,7 @@ function App({ sesion, onLogout }) {
   const [buscar, setBuscar] = useState('')
   const [filtro, setFiltro] = useState('3dias')
   const [filtroVinc, setFiltroVinc] = useState('')
+  const [filtroCategoria, setFiltroCategoria] = useState('')
   const [orden, setOrden] = useState('fecha')
   const [verRes, setVerRes] = useState(false)
   const [mesFiltro, setMesFiltro] = useState(() => {
@@ -2010,6 +2038,23 @@ function App({ sesion, onLogout }) {
 
   useEffect(() => { cargarDatos() }, [cargarDatos])
 
+  const CATS_SERVICIOS = {
+    'Streaming':     { emoji:'🎬', servicios:['netflix','disney','hbo','max','prime','paramount','vix','crunchyroll','apple tv','apple one'] },
+    'Música':        { emoji:'🎵', servicios:['spotify'] },
+    'Video':         { emoji:'▶️', servicios:['youtube'] },
+    'Productividad': { emoji:'💼', servicios:['office','canva','capcut'] },
+    'IA':            { emoji:'🤖', servicios:['chatgpt','gemini','grok','copilot'] },
+    'IPTV':          { emoji:'📡', servicios:['ares','iptv'] },
+  }
+
+  function getCatServicio(cuenta) {
+    const c = cuenta.toLowerCase()
+    for (const [cat, { servicios }] of Object.entries(CATS_SERVICIOS)) {
+      if (servicios.some(s => c.includes(s))) return cat
+    }
+    return 'Otro'
+  }
+
   const filtrados = useMemo(() => {
     const q = buscar.toLowerCase()
     let lista = data.filter(({ cliente, servicios, dMin }) => {
@@ -2019,7 +2064,8 @@ function App({ sesion, onLogout }) {
         servicios.some(s => s.vinculada && s.vinculada.toLowerCase().includes(q)) ||
         servicios.some(s => s.acceso_cliente && s.acceso_cliente.toLowerCase().includes(q))
       const matchV = !filtroVinc || servicios.some(s => s.vinculada === filtroVinc)
-      const ok = matchQ && matchV
+      const matchCat = !filtroCategoria || servicios.some(s => getCatServicio(s.cuenta) === filtroCategoria)
+      const ok = matchQ && matchV && matchCat
       if (filtro === 'vencidos')   return ok && dMin !== null && dMin < 0
       if (filtro === 'hoy')        return ok && dMin === 0
       if (filtro === '3dias')      return ok && dMin !== null && dMin <= 3
@@ -2032,7 +2078,7 @@ function App({ sesion, onLogout }) {
     if (orden === 'nombre') lista = [...lista].sort((a,b) => a.cliente.nombre.localeCompare(b.cliente.nombre))
     if (orden === 'precio') lista = [...lista].sort((a,b) => b.total - a.total)
     return lista
-  }, [data, buscar, filtro, filtroVinc, orden])
+  }, [data, buscar, filtro, filtroVinc, filtroCategoria, orden])
 
   // Contadores por filtro
   const contadores = useMemo(() => {
@@ -2193,7 +2239,7 @@ function App({ sesion, onLogout }) {
   })
 
   // Reset paginación al cambiar filtro/búsqueda
-  useEffect(() => { setPagina(1) }, [filtro, filtroVinc, buscar])
+  useEffect(() => { setPagina(1) }, [filtro, filtroVinc, filtroCategoria, buscar])
 
   const resumenVinc = useMemo(() => {
     const m = new Map()
@@ -2451,7 +2497,7 @@ function App({ sesion, onLogout }) {
               style={{paddingLeft:28,padding:'7px 10px 7px 28px',fontSize:12}} />
           </div>
 
-          {/* Vinculadas — scroll horizontal sin caja */}
+          {/* Vinculadas */}
           <div style={{display:'flex',gap:4,overflowX:'auto',marginBottom:5,paddingBottom:2}}>
             <button onClick={()=>setFiltroVinc('')} style={{
               padding:'3px 10px',borderRadius:20,border:'none',cursor:'pointer',
@@ -2471,6 +2517,30 @@ function App({ sesion, onLogout }) {
                   color: active ? '#d8b4fe' : 'var(--text3)',
                   transition:'all .15s',
                 }}>{v}</button>
+              )
+            })}
+          </div>
+
+          {/* Categorías */}
+          <div style={{display:'flex',gap:4,overflowX:'auto',marginBottom:5,paddingBottom:2}}>
+            <button onClick={()=>setFiltroCategoria('')} style={{
+              padding:'3px 9px',borderRadius:20,border:'none',cursor:'pointer',
+              fontSize:10,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,
+              background: filtroCategoria==='' ? 'var(--yellow)' : 'var(--bg2)',
+              color: filtroCategoria==='' ? 'var(--bg)' : 'var(--text3)',
+              transition:'all .15s',
+            }}>Todo</button>
+            {Object.entries(CATS_SERVICIOS).map(([cat, { emoji }]) => {
+              const active = filtroCategoria === cat
+              return (
+                <button key={cat} onClick={()=>setFiltroCategoria(active?'':cat)} style={{
+                  padding:'3px 9px',borderRadius:20,cursor:'pointer',flexShrink:0,
+                  fontSize:10,fontWeight:700,whiteSpace:'nowrap',
+                  border:`1px solid ${active?'#ffd60a60':'var(--border)'}`,
+                  background: active ? 'rgba(255,214,10,0.15)' : 'var(--bg2)',
+                  color: active ? 'var(--yellow)' : 'var(--text3)',
+                  transition:'all .15s',
+                }}>{emoji} {cat}</button>
               )
             })}
           </div>
@@ -3136,13 +3206,16 @@ function CuentasView() {
   const [editVal, setEditVal] = useState('')
   const [editPin, setEditPin] = useState('')
   const [editCorreo, setEditCorreo] = useState('')
+  const [editPass, setEditPass] = useState('')
+  const [editTel, setEditTel] = useState('')
   const [buscar, setBuscar] = useState('')
   const [filtroSvc, setFiltroSvc] = useState('')
+  const [filtroCategoriaCuentas, setFiltroCategoriaCuentas] = useState('')
   const [agregandoPerfil, setAgregandoPerfil] = useState(null)
   const [nuevoPerfil, setNuevoPerfil] = useState({perfil:'',pin:'',cliente:''})
   const [agregandoCuenta, setAgregandoCuenta] = useState(false)
   const [nuevaCuenta, setNuevaCuenta] = useState({servicio:'',vinculada:'',correo:'',password:'',tipo:'perfiles'})
-  const [editandoCuenta, setEditandoCuenta] = useState(null) // cuenta completa
+  const [editandoCuenta, setEditandoCuenta] = useState(null)
   const [editCuentaForm, setEditCuentaForm] = useState({})
   const [confirm, setConfirm] = useState(null)
 
@@ -3201,37 +3274,41 @@ function CuentasView() {
   const serviciosUnicos = [...new Set(cuentas.map(c => c.servicio))].sort()
 
   const cuentasFiltradas = cuentas.filter(c => {
-    if (c.tipo === 'individual') return false // Se renderizan aparte
+    if (c.tipo === 'individual') return false
     const okSvc = !filtroSvc || c.servicio === filtroSvc
+    const okCat = !filtroCategoriaCuentas || (c.categoria || 'Otro') === filtroCategoriaCuentas
     const okQ = !buscar || c.servicio.toLowerCase().includes(buscar.toLowerCase()) ||
       c.vinculada?.toLowerCase().includes(buscar.toLowerCase()) ||
       c.perfiles_espacios?.some(p => (p.cliente_nombre||'').toLowerCase().includes(buscar.toLowerCase()))
-    return okSvc && okQ
+    return okSvc && okCat && okQ
   })
 
   const cuentasIndividuales = cuentas.filter(c => {
     if (c.tipo !== 'individual') return false
+    const okCat = !filtroCategoriaCuentas || (c.categoria || 'Otro') === filtroCategoriaCuentas
     const okQ = !buscar || c.servicio.toLowerCase().includes(buscar.toLowerCase()) ||
       c.correo?.toLowerCase().includes(buscar.toLowerCase()) ||
       c.notas?.toLowerCase().includes(buscar.toLowerCase())
-    return okQ
+    return okCat && okQ
   })
+
+  const categoriasDisponibles = [...new Set(cuentas.map(c => c.categoria || 'Otro'))].sort()
 
   async function guardarCliente(perfilId, nuevoCliente, perfilActual) {
     const val = nuevoCliente.trim() || null
-    // Si había un cliente anterior con servicio enlazado, liberar ese servicio
     if (perfilActual?.servicio_id && val !== perfilActual.cliente_nombre) {
       await supabase.from('servicios').update({ perfil_id: null }).eq('id', perfilActual.servicio_id)
     }
-    await supabase.from('perfiles_espacios').update({
-      cliente_nombre: val,
-      cliente_id: null,
+    const updateData = {
+      cliente_nombre: val, cliente_id: null,
       servicio_id: val ? perfilActual?.servicio_id : null,
       notas: val ? null : 'DISPONIBLE',
       pin: editPin.trim() || perfilActual?.pin || null,
       correo_cliente: editCorreo.trim() || perfilActual?.correo_cliente || null,
-    }).eq('id', perfilId)
-    // Sincronizar correo en el servicio enlazado si existe
+    }
+    if (editPass.trim()) updateData.password_cliente = editPass.trim()
+    if (editTel.trim()) updateData.telefono_cliente = editTel.trim()
+    await supabase.from('perfiles_espacios').update(updateData).eq('id', perfilId)
     if (perfilActual?.servicio_id && editCorreo.trim()) {
       await supabase.from('servicios').update({ acceso_cliente: editCorreo.trim() }).eq('id', perfilActual.servicio_id)
     }
@@ -3437,6 +3514,34 @@ function CuentasView() {
         </div>
       )}
 
+      {/* Filtros por categoría */}
+      <div style={{display:'flex',gap:4,overflowX:'auto',marginBottom:6,paddingBottom:2}}>
+        <button onClick={()=>setFiltroCategoriaCuentas('')} style={{
+          padding:'3px 9px',borderRadius:20,border:'none',cursor:'pointer',fontSize:10,fontWeight:700,whiteSpace:'nowrap',flexShrink:0,
+          background: filtroCategoriaCuentas==='' ? 'var(--yellow)' : 'var(--bg2)',
+          color: filtroCategoriaCuentas==='' ? 'var(--bg)' : 'var(--text3)',
+        }}>Todo</button>
+        {Object.entries(CATS_SERVICIOS).filter(([cat]) => categoriasDisponibles.includes(cat)).map(([cat,{emoji}]) => {
+          const active = filtroCategoriaCuentas === cat
+          return (
+            <button key={cat} onClick={()=>setFiltroCategoriaCuentas(active?'':cat)} style={{
+              padding:'3px 9px',borderRadius:20,cursor:'pointer',flexShrink:0,fontSize:10,fontWeight:700,whiteSpace:'nowrap',
+              border:`1px solid ${active?'#ffd60a60':'var(--border)'}`,
+              background: active ? 'rgba(255,214,10,0.15)' : 'var(--bg2)',
+              color: active ? 'var(--yellow)' : 'var(--text3)',
+            }}>{emoji} {cat}</button>
+          )
+        })}
+        {categoriasDisponibles.includes('Otro') && (
+          <button onClick={()=>setFiltroCategoriaCuentas(filtroCategoriaCuentas==='Otro'?'':'Otro')} style={{
+            padding:'3px 9px',borderRadius:20,cursor:'pointer',flexShrink:0,fontSize:10,fontWeight:700,whiteSpace:'nowrap',
+            border:`1px solid ${filtroCategoriaCuentas==='Otro'?'#ffd60a60':'var(--border)'}`,
+            background: filtroCategoriaCuentas==='Otro' ? 'rgba(255,214,10,0.15)' : 'var(--bg2)',
+            color: filtroCategoriaCuentas==='Otro' ? 'var(--yellow)' : 'var(--text3)',
+          }}>⚡ Otro</button>
+        )}
+      </div>
+
       {/* Filtros por servicio */}
       <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:12,paddingBottom:2}}>
         <button onClick={()=>setFiltroSvc('')} style={{...chipSt(filtroSvc==='')}}> Todos</button>
@@ -3537,9 +3642,17 @@ function CuentasView() {
                             <input value={editPin} onChange={e=>setEditPin(e.target.value)}
                               placeholder="PIN (ej: 1234)"
                               style={{...inputSt,padding:'3px 7px',fontSize:11,flex:1,fontFamily:'var(--mono)',color:'var(--yellow)'}}/>
+                            <input value={editTel} onChange={e=>setEditTel(e.target.value)}
+                              placeholder="📱 Teléfono"
+                              style={{...inputSt,padding:'3px 7px',fontSize:11,flex:1,fontFamily:'var(--mono)'}}/>
+                          </div>
+                          <div style={{display:'flex',gap:5}}>
                             <input value={editCorreo} onChange={e=>setEditCorreo(e.target.value)}
-                              placeholder="Correo / acceso cliente"
-                              style={{...inputSt,padding:'3px 7px',fontSize:11,flex:2,fontFamily:'var(--mono)'}}/>
+                              placeholder="Correo cliente"
+                              style={{...inputSt,padding:'3px 7px',fontSize:11,flex:1,fontFamily:'var(--mono)'}}/>
+                            <input value={editPass} onChange={e=>setEditPass(e.target.value)}
+                              placeholder="Contraseña"
+                              style={{...inputSt,padding:'3px 7px',fontSize:11,flex:1,fontFamily:'var(--mono)'}}/>
                           </div>
                           <div style={{display:'flex',gap:5}}>
                             <button onClick={()=>guardarCliente(p.id,editVal,p)} style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:5,padding:'4px 12px',cursor:'pointer',fontSize:11,fontWeight:700,flex:1}}>✓ Guardar</button>
@@ -3563,7 +3676,13 @@ function CuentasView() {
                           {/* Correo/teléfono del cliente */}
                           {!esDisponible && (p.correo_cliente || p.telefono_cliente) && (
                             <div style={{fontSize:10,color:'var(--text3)',marginTop:1,fontFamily:'var(--mono)'}}>
-                              {p.correo_cliente} {p.telefono_cliente && `· ${p.telefono_cliente}`}
+                              {p.correo_cliente} {p.telefono_cliente && `· 📱 ${p.telefono_cliente}`}
+                            </div>
+                          )}
+                          {/* Contraseña para cuentas genéricas */}
+                          {!esDisponible && p.password_cliente && (
+                            <div style={{fontSize:10,color:'var(--text3)',marginTop:1,fontFamily:'var(--mono)'}}>
+                              🔑 {p.password_cliente}
                             </div>
                           )}
                           {/* Botón sincronizar si hay fecha calculada pero no enlace real */}
@@ -3595,7 +3714,7 @@ function CuentasView() {
                     {/* Acciones */}
                     {!isEditando && (
                       <div style={{display:'flex',gap:3,flexShrink:0}}>
-                        <button onClick={()=>{ setEditando(p.id); setEditVal(esDisponible?'':p.cliente_nombre||''); setEditPin(p.pin||''); setEditCorreo(p.correo_cliente||'') }}
+                        <button onClick={()=>{ setEditando(p.id); setEditVal(esDisponible?'':p.cliente_nombre||''); setEditPin(p.pin||''); setEditCorreo(p.correo_cliente||''); setEditPass(p.password_cliente||''); setEditTel(p.telefono_cliente||'') }}
                           style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:13,padding:'1px 3px'}}>✏️</button>
                         <button onClick={()=>eliminarPerfil(p)}
                           style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:12,padding:'1px 3px',opacity:0.5}}>🗑️</button>
@@ -3609,52 +3728,7 @@ function CuentasView() {
         )
       })}
 
-      {/* ─── SECCIÓN CUENTAS INDIVIDUALES (ChatGPT, etc.) ─── */}
-      {cuentasIndividuales.length > 0 && (
-        <div style={{marginTop:8}}>
-          <div style={{fontSize:10,color:'var(--purple)',fontFamily:'var(--mono)',fontWeight:700,marginBottom:8,padding:'0 2px'}}>🤖 CUENTAS INDIVIDUALES</div>
-          {cuentasIndividuales.map(c => {
-            const perfil = c.perfiles_espacios?.[0]
-            const cliente = perfil?.cliente_nombre
-            const fecha = perfil?.fecha_vencimiento
-            const d = fecha ? diasRestantes(fecha) : null
-            const esLibre = !cliente || cliente.toUpperCase() === 'DISPONIBLE'
-            return (
-              <div key={c.id} style={{
-                background:'var(--bg2)',border:`1px solid ${esLibre?'var(--border)':'rgba(157,78,221,0.3)'}`,
-                borderRadius:12,padding:'12px 14px',marginBottom:8,
-              }}>
-                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:esLibre?0:8}}>
-                  <div style={{
-                    background:esLibre?'rgba(0,255,136,0.1)':'rgba(157,78,221,0.15)',
-                    border:`1px solid ${esLibre?'#00ff8840':'rgba(157,78,221,0.4)'}`,
-                    borderRadius:6,padding:'3px 8px',fontSize:10,fontWeight:700,
-                    color:esLibre?'var(--green)':'var(--purple)',fontFamily:'var(--mono)',flexShrink:0,
-                  }}>{c.servicio}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:11,color:'var(--text3)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.correo}</div>
-                  </div>
-                  {!esLibre && d !== null && <BadgeDias d={d} />}
-                  <button onClick={()=>{ if(confirm('¿Eliminar esta cuenta?')) { supabase.from('cuentas_maestras').delete().eq('id',c.id).then(()=>cargar()) }}}
-                    style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:12,opacity:0.5,padding:'2px 4px',flexShrink:0}}>🗑️</button>
-                </div>
-                {!esLibre && (
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-                    <div style={{fontSize:12,fontWeight:700,color:'var(--text)',flex:1}}>{cliente}</div>
-                    {c.password && (
-                      <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',background:'var(--bg1)',border:'1px solid var(--border)',borderRadius:4,padding:'1px 6px'}}>
-                        🔑 {c.password}
-                      </div>
-                    )}
-                    {fecha && <div style={{fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}}>📅 {formatFecha(fecha)}</div>}
-                  </div>
-                )}
-                {esLibre && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✅ Disponible</div>}
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {/* Los servicios genéricos (ChatGPT, Canva, etc.) ahora se muestran como perfiles dentro de sus cuentas agrupadas */}
     </div>
   )
 }
